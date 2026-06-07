@@ -40,10 +40,25 @@ jobs:
       - name: Build debug APK
         run: gradle wrapper --gradle-version 8.9 && ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Run Paparazzi snapshot tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ccdcam-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: paparazzi-snapshots
+          path: |
+            app/build/paparazzi/
+            app/build/reports/paparazzi/
+            app/build/reports/tests/
+          if-no-files-found: warn
           retention-days: 7
