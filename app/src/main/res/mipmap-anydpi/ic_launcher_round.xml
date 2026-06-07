@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fallback round launcher icon for API 24-25. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path android:fillColor="#0E1216"
+        android:pathData="M54,54 m-54,0 a54,54 0 1,0 108,0 a54,54 0 1,0 -108,0" />
+
+    <path android:strokeColor="#5BE5DC" android:strokeWidth="3.5"
+        android:fillColor="#00000000" android:strokeLineCap="round"
+        android:pathData="M34,46 L34,34 L46,34" />
+    <path android:strokeColor="#5BE5DC" android:strokeWidth="3.5"
+        android:fillColor="#00000000" android:strokeLineCap="round"
+        android:pathData="M62,34 L74,34 L74,46" />
+    <path android:strokeColor="#5BE5DC" android:strokeWidth="3.5"
+        android:fillColor="#00000000" android:strokeLineCap="round"
+        android:pathData="M34,62 L34,74 L46,74" />
+    <path android:strokeColor="#5BE5DC" android:strokeWidth="3.5"
+        android:fillColor="#00000000" android:strokeLineCap="round"
+        android:pathData="M62,74 L74,74 L74,62" />
+
+    <path android:strokeColor="#3FA8A0" android:strokeWidth="1.6"
+        android:fillColor="#00000000"
+        android:pathData="M42,50 L66,50" />
+    <path android:strokeColor="#3FA8A0" android:strokeWidth="1.6"
+        android:fillColor="#00000000"
+        android:pathData="M42,54 L66,54" />
+    <path android:strokeColor="#3FA8A0" android:strokeWidth="1.6"
+        android:fillColor="#00000000"
+        android:pathData="M42,58 L66,58" />
+
+    <path android:fillColor="#FF3B30"
+        android:pathData="M68,40 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+</vector>

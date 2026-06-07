@@ -7,4 +7,5 @@
     <color name="hud_accent">#5BE5DC</color>
     <color name="hud_rec">#FF3B30</color>
     <color name="hud_stroke">#1F2630</color>
+    <color name="ic_launcher_background">#0E1216</color>
 </resources>
