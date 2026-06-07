@@ -67,20 +67,26 @@ class CcdRenderer(
     private var encoderEgl: EGLSurface? = null
     private var encoderW = 0
     private var encoderH = 0
+    private var encoderStartNs: Long = 0L
     private var lastEncoderFrameNs: Long = 0L
     private val encoderFrameIntervalNs: Long = 1_000_000_000L / 30  // cap encoder to 30 fps
     private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
     private var eglConfig: EGLConfig? = null
 
-    /** Attach an encoder input Surface; renderer will dual-render to it until null is passed. */
-    fun setEncoderSurface(s: Surface?, w: Int, h: Int) {
+    /**
+     * Attach an encoder input Surface; renderer will dual-render to it until null is passed.
+     * [ptsBaseNs] is the monotonic clock value the encoder considers t=0 — pass the same
+     * reference the audio pipeline uses so A/V share a zero-based timeline.
+     */
+    fun setEncoderSurface(s: Surface?, w: Int, h: Int, ptsBaseNs: Long = System.nanoTime()) {
         if (s == null) {
             teardownEncoderSurface = true
         } else {
             pendingEncoderSurface = s
             pendingEncoderWidth = w
             pendingEncoderHeight = h
+            encoderStartNs = ptsBaseNs
             lastEncoderFrameNs = 0L
         }
     }
@@ -219,7 +225,10 @@ class CcdRenderer(
             val savedRead = EGL14.eglGetCurrentSurface(EGL14.EGL_READ)
             if (EGL14.eglMakeCurrent(eglDisplay, encSurf, encSurf, eglContext)) {
                 drawTo(encoderW, encoderH)
-                EGLExt.eglPresentationTimeANDROID(eglDisplay, encSurf, now)
+                // PTS must be relative to encoderStartNs, otherwise the muxer records
+                // a track that starts at the absolute monotonic clock (~hours since boot)
+                // and the file's reported duration becomes nonsense.
+                EGLExt.eglPresentationTimeANDROID(eglDisplay, encSurf, now - encoderStartNs)
                 EGL14.eglSwapBuffers(eglDisplay, encSurf)
                 EGL14.eglMakeCurrent(eglDisplay, savedDraw, savedRead, eglContext)
             }

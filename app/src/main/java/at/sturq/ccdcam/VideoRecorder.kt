@@ -58,10 +58,14 @@ class VideoRecorder(
     private var audioThread: Thread? = null
     private var videoDrainThread: Thread? = null
     @Volatile private var recording = false
-    private var startNs = 0L
 
     /** Provided to caller for GL rendering. Valid only between [start] and [stop]. */
     var inputSurface: Surface? = null
+        private set
+
+    /** Monotonic clock value captured at [start], shared with the renderer so video and
+     *  audio PTS use the same zero-based timeline. */
+    var startNs: Long = 0L
         private set
 
     /** Absolute file path written to. */

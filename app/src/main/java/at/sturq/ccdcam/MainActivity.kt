@@ -185,7 +185,7 @@ class MainActivity : AppCompatActivity() {
         }
         videoRecorder = rec
         recordingFile = outFile
-        renderer.setEncoderSurface(rec.inputSurface, w, h)
+        renderer.setEncoderSurface(rec.inputSurface, w, h, rec.startNs)
         binding.recordBtn.text = getString(R.string.stop)
     }
 
