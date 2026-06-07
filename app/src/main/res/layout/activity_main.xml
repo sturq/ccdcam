@@ -2,290 +2,40 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/hud_bg"
-    android:fitsSystemWindows="true">
+    android:background="@android:color/black">
 
-    <!-- ============== Preview area (fills remaining vertical space) ============== -->
     <android.opengl.GLSurfaceView
         android:id="@+id/glView"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintTop_toBottomOf="@id/topBar"
-        app:layout_constraintBottom_toTopOf="@id/infoRow"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- Photo-view shown in EDIT mode instead of GL preview -->
-    <ImageView
-        android:id="@+id/photoPreview"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:visibility="gone"
-        android:scaleType="fitCenter"
-        android:contentDescription="@null"
-        app:layout_constraintTop_toBottomOf="@id/topBar"
-        app:layout_constraintBottom_toTopOf="@id/infoRow"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- Viewfinder corner brackets overlay -->
-    <ImageView
-        android:id="@+id/brTL"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:layout_margin="10dp"
-        android:src="@drawable/bracket_tl"
-        android:contentDescription="@null"
-        app:layout_constraintTop_toTopOf="@id/glView"
-        app:layout_constraintStart_toStartOf="@id/glView" />
-    <ImageView
-        android:id="@+id/brTR"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:layout_margin="10dp"
-        android:src="@drawable/bracket_tr"
-        android:contentDescription="@null"
-        app:layout_constraintTop_toTopOf="@id/glView"
-        app:layout_constraintEnd_toEndOf="@id/glView" />
-    <ImageView
-        android:id="@+id/brBL"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:layout_margin="10dp"
-        android:src="@drawable/bracket_bl"
-        android:contentDescription="@null"
-        app:layout_constraintBottom_toBottomOf="@id/glView"
-        app:layout_constraintStart_toStartOf="@id/glView" />
-    <ImageView
-        android:id="@+id/brBR"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:layout_margin="10dp"
-        android:src="@drawable/bracket_br"
-        android:contentDescription="@null"
-        app:layout_constraintBottom_toBottomOf="@id/glView"
-        app:layout_constraintEnd_toEndOf="@id/glView" />
-
-    <!-- Vertical zoom slider, left edge, anchored to preview area -->
-    <SeekBar
-        android:id="@+id/zoomSeek"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:rotation="270"
-        android:max="100"
-        android:progress="0"
-        android:progressDrawable="@drawable/track_camcorder"
-        android:thumbTint="@color/hud_accent"
-        android:layout_marginStart="6dp"
-        app:layout_constraintWidth_percent="0.42"
-        app:layout_constraintStart_toStartOf="@id/glView"
-        app:layout_constraintTop_toTopOf="@id/glView"
-        app:layout_constraintBottom_toBottomOf="@id/glView" />
-
-    <!-- ============== Top bar: STBY/REC + timecode + date ============== -->
-    <LinearLayout
-        android:id="@+id/topBar"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="20dp"
-        android:paddingTop="14dp"
-        android:paddingBottom="10dp"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <View
-            android:id="@+id/recDot"
-            android:layout_width="10dp"
-            android:layout_height="10dp"
-            android:background="@drawable/rec_dot"
-            android:visibility="invisible" />
-
-        <TextView
-            android:id="@+id/modeTxt"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:fontFamily="monospace"
-            android:textStyle="bold"
-            android:textSize="13sp"
-            android:textColor="@color/hud_accent"
-            android:letterSpacing="0.12"
-            android:text="STBY"
-            tools:ignore="HardcodedText" />
-
-        <TextView
-            android:id="@+id/timecode"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:fontFamily="monospace"
-            android:textSize="13sp"
-            android:textColor="@color/hud_text"
-            android:text="00:00:00"
-            tools:ignore="HardcodedText" />
-
-        <Space
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
-
-        <TextView
-            android:id="@+id/dateTxt"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:textSize="12sp"
-            android:textColor="@color/hud_text"
-            android:letterSpacing="0.08"
-            android:text="2026 01 01"
-            tools:ignore="HardcodedText" />
-    </LinearLayout>
-
-    <!-- ============== Info row: zoom indicator + label ============== -->
-    <LinearLayout
-        android:id="@+id/infoRow"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="20dp"
-        android:paddingVertical="6dp"
-        app:layout_constraintBottom_toTopOf="@id/modeBar"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <TextView
-            android:id="@+id/zoomTxt"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:textSize="11sp"
-            android:textColor="@color/hud_text"
-            android:text="W ─── T  1.0x"
-            tools:ignore="HardcodedText" />
-
-        <Space
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:textSize="9sp"
-            android:textColor="@color/hud_dim"
-            android:text="CCD CAM"
-            tools:ignore="HardcodedText" />
-    </LinearLayout>
-
-    <!-- ============== Mode bar: PHOTO  VIDEO  EDIT ============== -->
-    <LinearLayout
-        android:id="@+id/modeBar"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:paddingVertical="10dp"
-        android:paddingHorizontal="20dp"
-        app:layout_constraintBottom_toTopOf="@id/controlBar"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <TextView
-            android:id="@+id/modePhoto"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:paddingVertical="6dp"
-            android:fontFamily="monospace"
-            android:textStyle="bold"
-            android:textSize="12sp"
-            android:letterSpacing="0.18"
-            android:gravity="center"
-            android:textColor="@color/hud_dim"
-            android:background="?attr/selectableItemBackground"
-            android:text="PHOTO"
-            tools:ignore="HardcodedText" />
-
-        <TextView
-            android:id="@+id/modeVideo"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:paddingVertical="6dp"
-            android:fontFamily="monospace"
-            android:textStyle="bold"
-            android:textSize="12sp"
-            android:letterSpacing="0.18"
-            android:gravity="center"
-            android:textColor="@color/hud_accent"
-            android:background="?attr/selectableItemBackground"
-            android:text="VIDEO"
-            tools:ignore="HardcodedText" />
-
-        <TextView
-            android:id="@+id/modeEdit"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:paddingVertical="6dp"
-            android:fontFamily="monospace"
-            android:textStyle="bold"
-            android:textSize="12sp"
-            android:letterSpacing="0.18"
-            android:gravity="center"
-            android:textColor="@color/hud_dim"
-            android:background="?attr/selectableItemBackground"
-            android:text="EDIT"
-            tools:ignore="HardcodedText" />
-    </LinearLayout>
-
-    <!-- ============== Bottom control bar ============== -->
-    <FrameLayout
-        android:id="@+id/controlBar"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:paddingTop="6dp"
-        android:paddingBottom="22dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent" />
 
-        <ImageButton
-            android:id="@+id/captureBtn"
-            android:layout_width="76dp"
-            android:layout_height="76dp"
-            android:layout_gravity="center"
-            android:background="@drawable/rec_button"
-            android:contentDescription="@string/record" />
+    <Button
+        android:id="@+id/recordBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/record"
+        android:textColor="@android:color/white"
+        android:backgroundTint="#CC222222"
+        android:layout_marginBottom="32dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
-        <ImageButton
-            android:id="@+id/flipBtn"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_gravity="center_vertical|end"
-            android:layout_marginEnd="36dp"
-            android:background="@drawable/flip_button"
-            android:contentDescription="@string/switch_camera"
-            android:src="@drawable/ic_flip" />
-
-        <ImageButton
-            android:id="@+id/galleryBtn"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_gravity="center_vertical|start"
-            android:layout_marginStart="36dp"
-            android:background="@drawable/flip_button"
-            android:contentDescription="@string/pick_media"
-            android:src="@drawable/ic_gallery"
-            android:padding="14dp" />
-    </FrameLayout>
-
+    <Button
+        android:id="@+id/flipBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/switch_camera"
+        android:textColor="@android:color/white"
+        android:backgroundTint="#CC222222"
+        android:layout_marginBottom="32dp"
+        android:layout_marginEnd="24dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

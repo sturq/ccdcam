@@ -1,13 +1,10 @@
 #extension GL_OES_EGL_image_external : require
 precision highp float;
 
-varying vec2 vScreenUv;
+varying vec2 vTexCoord;
 uniform samplerExternalOES sTexture;
-uniform mat4 uTexMatrix;     // includes camera Y-flip AND our rotation/mirror
 uniform vec2 uResolution;
 uniform float uTime;
-uniform float uDisplayAspect; // surface w / h
-uniform float uContentAspect; // displayed content w / h (post-rotation)
 
 // constants kept in sync with tools/sim.py
 const float LINES = 480.0;
@@ -35,36 +32,19 @@ float hash(vec2 p) {
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
-vec3 sampleCam(vec2 uv) {
-    vec2 cl = clamp(uv, vec2(0.0), vec2(1.0));
-    vec2 tex = (uTexMatrix * vec4(cl, 0.0, 1.0)).xy;
-    return texture2D(sTexture, tex).rgb;
-}
-
 float brightMask(vec2 uv, float threshold) {
-    return smoothstep(threshold, 1.0, luma(sampleCam(uv)));
+    vec2 cl = clamp(uv, vec2(0.001), vec2(0.999));
+    float l = luma(texture2D(sTexture, cl).rgb);
+    return smoothstep(threshold, 1.0, l);
 }
 
 void main() {
-    // COVER: scale content to fill viewport, crop overflow on the long axis
-    vec2 s = vScreenUv;
-    vec2 uv;
-    if (uDisplayAspect < uContentAspect) {
-        // display more portrait than content -> crop content sides
-        float scale = uDisplayAspect / uContentAspect;
-        float off = (1.0 - scale) * 0.5;
-        uv = vec2(off + s.x * scale, s.y);
-    } else {
-        // display wider than content -> crop content top/bottom
-        float scale = uContentAspect / uDisplayAspect;
-        float off = (1.0 - scale) * 0.5;
-        uv = vec2(s.x, off + s.y * scale);
-    }
+    vec2 uv = vTexCoord;
 
-    // 1. base sample
-    vec3 col = sampleCam(uv);
+    // 1. base sample (no quantize — let the GPU bilinear handle it; quantize was causing precision issues)
+    vec3 col = texture2D(sTexture, uv).rgb;
 
-    // 2. vertical CCD smear
+    // 2. vertical CCD smear: small number of samples up & down, only blown-highlight pixels contribute
     float smear = 0.0;
     for (int i = 1; i <= SMEAR_SAMPLES; i++) {
         float t = float(i) / float(SMEAR_SAMPLES);
