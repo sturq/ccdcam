@@ -23,9 +23,9 @@ Each section has its constants at the top, so dialing the look is a one-liner.
 
 ## Status
 
-`v0.1` is live in `main`: filtered preview, front/back flip. No recording yet.
+`v0.1.1` is live in `main`: filtered preview, front/back flip, video recording to `Movies/CCDCam/`. Recording is currently RAW (the camera stream goes to MP4 unfiltered) because baking the GLSL shader into the encoded video needs a second EGL surface fed into MediaCodec, which is the v0.2 milestone. So right now the preview shows the look, the saved MP4 does not.
 
-`v0.2` is recording. A second EGL surface feeds the same shader output into MediaCodec, muxed with AAC audio into MP4 via MediaMuxer, saved to the gallery through MediaStore.
+`v0.2` is filtered recording. Same shader output piped into MediaCodec input surface and muxed with AAC audio so the saved MP4 has the look baked in.
 
 `v0.3` is the iOS port. Same shader translated to SkSL or Metal, wrapped in a SwiftUI camera view.
 

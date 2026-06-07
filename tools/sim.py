@@ -19,14 +19,15 @@ import numpy as np
 from PIL import Image
 
 # ---------- shader constants (kept in sync with ccd.frag) ----------
-LINES = 480.0              # vertical resolution simulated
-SMEAR_THRESHOLD = 0.92     # only very bright pixels smear (sun, specular highlights)
-SMEAR_STRENGTH = 1.4
-SMEAR_SAMPLES = 20
+LINES = 480.0
+SMEAR_THRESHOLD = 0.88
+SMEAR_STRENGTH = 1.6
+SMEAR_SAMPLES = 8
 SMEAR_RANGE = 0.45
-HORIZONTAL_FLARE = 0.5     # tighter, point-source style
-FLARE_THRESHOLD = 0.95     # extreme highlights only
-FLARE_RANGE = 0.18
+HORIZONTAL_FLARE = 0.55
+FLARE_THRESHOLD = 0.93
+FLARE_RANGE = 0.15
+FLARE_SAMPLES = 5
 CHROMA_NOISE_AMP = 0.07
 LUMA_GRAIN_AMP = 0.05
 BLACK_LIFT = 0.06
@@ -59,15 +60,6 @@ def vertical_smear(img: np.ndarray) -> np.ndarray:
     L = luma(img)
     mask = np.clip((L - SMEAR_THRESHOLD) / max(1e-3, 1.0 - SMEAR_THRESHOLD), 0.0, 1.0)
     mask = mask * mask * (3 - 2 * mask)
-    # cluster filter: a pixel only counts as "smear source" if surrounded by other bright pixels
-    # (so single-pixel text dots don't streak, only big bright spots like sun/lights)
-    h, w = mask.shape
-    cluster = np.zeros_like(mask)
-    cluster[1:-1, 1:-1] = np.minimum.reduce([
-        mask[1:-1, 1:-1], mask[:-2, 1:-1], mask[2:, 1:-1],
-        mask[1:-1, :-2], mask[1:-1, 2:],
-    ])
-    mask = cluster
     smear = np.zeros_like(L)
     max_dy = int(SMEAR_RANGE * h)
     for i in range(1, SMEAR_SAMPLES + 1):
@@ -93,15 +85,8 @@ def horizontal_flare(img: np.ndarray) -> np.ndarray:
     h, w, _ = img.shape
     L = luma(img)
     mask = np.clip((L - FLARE_THRESHOLD) / max(1e-3, 1.0 - FLARE_THRESHOLD), 0.0, 1.0)
-    # cluster filter so isolated bright pixels (text) don't flare
-    cluster = np.zeros_like(mask)
-    cluster[1:-1, 1:-1] = np.minimum.reduce([
-        mask[1:-1, 1:-1], mask[:-2, 1:-1], mask[2:, 1:-1],
-        mask[1:-1, :-2], mask[1:-1, 2:],
-    ])
-    mask = cluster
     flare = np.zeros_like(L)
-    samples = 16
+    samples = FLARE_SAMPLES
     max_dx = int(FLARE_RANGE * w)
     for i in range(1, samples + 1):
         t = i / samples
