@@ -1,0 +1,16 @@
+CCDCam runs your phone's camera through a GLSL fragment shader that fakes the look of a 90s Sony Handycam, Hi8, or MiniDV camcorder. Chunky low-res chroma, vertical highlight smear, horizontal flare, scanlines, warm color grade, vignette. The filter applies to the live preview, photos, and recorded video — what you see is what gets saved, baked into the pixels.
+
+Features:
+
+* Live filtered camera preview
+* PHOTO mode — JPEG snapshot saved to Pictures/CCDCam
+* VIDEO mode — H.264 + AAC MP4 with the filter encoded into every frame, saved to Movies/CCDCam
+* Pinch-to-zoom
+* Camcorder HUD overlay: viewfinder corner brackets, timecode with frame counter, STBY/REC indicator, tape mode label, battery indicator, live date stamp
+* Material You adaptive launcher icon (themed icon on Android 13+)
+* Front and back camera flip
+* No tracking, no ads, no in-app purchases, no account, no network access
+
+Free and open source under GPL-3.0. Forks must stay GPL — the camcorder look should stay free for everyone.
+
+Source code, issues and releases: https://github.com/sturq/ccdcam

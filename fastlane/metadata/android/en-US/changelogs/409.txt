@@ -1,0 +1,8 @@
+First public release.
+
+* Live Hi8/CCD camcorder shader on the camera feed
+* Filter baked into recorded MP4 (H.264 + AAC) and saved JPEGs
+* PHOTO and VIDEO modes
+* Pinch-to-zoom
+* Camcorder HUD with brackets, timecode, date stamp
+* Material You adaptive icon

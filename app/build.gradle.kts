@@ -12,8 +12,18 @@ android {
         applicationId = "at.sturq.ccdcam"
         minSdk = 24
         targetSdk = 34
-        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
         versionName = project.findProperty("versionName") as String? ?: "0.1.0-dev"
+        // Derive versionCode from MAJOR.MINOR.PATCH so every git tag bumps it
+        // monotonically (F-Droid requirement). Override with -PversionCode=N if needed.
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt()
+            ?: run {
+                val clean = versionName!!.substringBefore("-")
+                val parts = clean.split(".").mapNotNull { it.toIntOrNull() }
+                val major = parts.getOrNull(0) ?: 0
+                val minor = parts.getOrNull(1) ?: 0
+                val patch = parts.getOrNull(2) ?: 0
+                major * 10000 + minor * 100 + patch
+            }
     }
 
     signingConfigs {

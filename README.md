@@ -1,56 +1,64 @@
 # CCDCam
 
-Live camcorder filter for Android. Camera preview is rendered through a GLSL fragment shader that fakes the look of a Sony Handycam / Hi8 / MiniDV: vertical highlight smear, chroma noise, scanlines, lifted blacks, warm color cast.
+Open-source camcorder filter app for Android. The live camera feed runs through a GLSL fragment shader that fakes the look of a 90s Sony Handycam / Hi8 / MiniDV: chunky low-res chroma, vertical highlight smear, horizontal flare, scanlines, warm grade, vignette. Photos and video are saved with the filter baked into the pixels.
 
-## Why
+## Features
 
-The 90s-camcorder look has become its own visual genre on Instagram and TikTok skate clips. Getting it on a phone today usually means either hunting a used Sony VX1000 on eBay or signing up for a subscription camera app. Neither is necessary. The whole effect is a fragment shader you can read and tune.
+- **Live filtered preview** at full display refresh rate (60-120 fps)
+- **Photo mode** — single JPEG snapshot of the filtered frame, saved to `Pictures/CCDCam/`
+- **Video mode** — H.264 MP4 + AAC audio, filter baked in via a MediaCodec dual-render pipeline, saved to `Movies/CCDCam/`
+- **Pinch-to-zoom** clamped to the lens's min/max
+- **Camcorder HUD overlay**: corner viewfinder brackets, `HH:MM:SS:FF` timecode, `STBY`/`REC` indicator with blinking red dot, tape mode label, battery icon, live date stamp
+- **Material You adaptive icon** with a monochrome layer that picks up the system wallpaper color on Android 13+
+- **Front/back camera flip**
+- **Python sim** (`tools/sim.py`) — numpy reimplementation of the shader so you can iterate the look on a JPEG or MP4 without rebuilding the APK
 
 ## What the shader does
 
 `app/src/main/assets/shaders/ccd.frag`, in order:
 
-1. Resolution downsample to ~480 lines
-2. Vertical CCD smear. Each pixel scans its column for bright spots and adds a streak. This is the hardware artifact you get on real CCD sensors when light overloads the readout register.
-3. Horizontal flare around highlights
-4. Per-frame chroma noise on R and B
-5. Luma grain
-6. Lifted blacks, warm grade, slight desaturation
-7. Horizontal scanline modulation
-8. Vignette
+1. UV quantization to a 540×480 cell grid → GPU bilinear inside each cell + cell-center sampling reproduces a `downsample-then-nearest-upsample` Hi8 chunkiness without an offscreen pass
+2. Chroma shift on R/B sampling for NTSC color bleed
+3. Vertical CCD smear — bright pixels bleed up and down their column
+4. Horizontal flare around extreme highlights
+5. Per-frame chroma noise on R and B
+6. Luma grain
+7. Black lift + warm grade + slight desaturation
+8. Scanline modulation tied to vertical line count
+9. Radial vignette
 
-Each section has its constants at the top, so dialing the look is a one-liner.
+All constants are at the top of the file; tuning the look is a one-liner. The same constants live in `tools/sim.py` so changes can be previewed in Python before rebuilding.
 
-## Status
+## Architecture
 
-`v0.1.1` is live in `main`: filtered preview, front/back flip, video recording to `Movies/CCDCam/`. Recording is currently RAW (the camera stream goes to MP4 unfiltered) because baking the GLSL shader into the encoded video needs a second EGL surface fed into MediaCodec, which is the v0.2 milestone. So right now the preview shows the look, the saved MP4 does not.
-
-`v0.2` is filtered recording. Same shader output piped into MediaCodec input surface and muxed with AAC audio so the saved MP4 has the look baked in.
-
-`v0.3` is the iOS port. Same shader translated to SkSL or Metal, wrapped in a SwiftUI camera view.
+- **CameraX 1.4** drives the `Preview` use case into a custom `SurfaceTexture` (CameraX `VideoCapture` is intentionally not used — it would bypass the shader)
+- **`CcdRenderer`** is a `GLSurfaceView.Renderer` that draws the shader-filtered scene to the on-screen surface every frame, and to an optional second `EGLSurface` backed by `MediaCodec`'s input Surface when recording (throttled to a steady 30 fps for clean encoder timing)
+- **`VideoRecorder`** wraps the H.264 encoder + AAC encoder (`AudioRecord` → `MediaCodec` AAC) and a shared `MediaMuxer`. Both tracks use the same `startNs` reference so the muxed MP4 reports a correct duration
+- **Photo capture** does a `glReadPixels` of the display framebuffer the next frame after `requestFrameSnapshot`, Y-flips the bitmap, writes JPEG via `MediaStore`
 
 ## Install
 
-Latest pre-built APK is on the [Releases page](https://github.com/sturq/ccdcam/releases). Download, tap, install (you'll need to allow installs from unknown sources for your browser or file manager).
+Latest pre-built APK is on the [Releases page](https://github.com/sturq/ccdcam/releases) (signed with the bundled debug keystore so installs require allowing unknown sources). Once published, F-Droid will be the recommended install channel.
 
-If you'd rather build it yourself, push to your fork and grab the artifact from the `build-apk` workflow, or run locally:
+To build locally:
 
 ```
-./gradlew assembleDebug
+./gradlew assembleDebug   # debug APK
+./gradlew assembleRelease # release APK signed with bundled debug keystore
 ```
+
+CI builds every push and produces release APKs on `v*` tags via `.github/workflows/release.yml`.
 
 ## Tweaking the look
 
-Open `app/src/main/assets/shaders/ccd.frag` and edit the constants. Useful knobs:
+Edit the constants at the top of `app/src/main/assets/shaders/ccd.frag`. The same values must be mirrored in `tools/sim.py` (kept in sync by hand). Run the sim on a sample frame:
 
-- Smear strength: the `0.85` threshold and the `* 3.5` multiplier in the vertical smear loop
-- Tape grain amount: the `0.06` in the luma grain section
-- Scanline contrast: the `0.04` in `0.96 + 0.04 * sin(...)`
-- Color grade: the `vec3(1.08, 1.02, 0.93)` warm tint
-- Resolution feel: `float lines = 480.0` (240 for Video8, 576 for PAL, 720 for early HDV)
-
-A reference Python implementation of the same algorithm lives in `tools/sim.py`. Run it on a JPEG to preview shader tweaks without rebuilding the app.
+```
+python tools/sim.py input.jpg output.jpg
+python tools/sim.py input.mp4 output.mp4   # requires ffmpeg
+python tools/test_sim.py                   # 8 invariants the shader has to satisfy
+```
 
 ## License
 
-MIT.
+[GPL-3.0-only](LICENSE). If you distribute a fork or use this code in another project, your project has to be under GPL-3.0 (or a compatible license) and you have to make your source available to users. The Hi8 look should stay free for everyone.
