@@ -4,5 +4,7 @@
     <string name="stop">STOP</string>
     <string name="switch_camera">flip</string>
     <string name="photo">PHOTO</string>
+    <string name="shutter">shutter</string>
+    <string name="gallery">gallery</string>
     <string name="perm_denied">Camera + Mic permission needed</string>
 </resources>

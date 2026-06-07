@@ -7,12 +7,19 @@ import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Size
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.Surface
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
@@ -30,18 +37,38 @@ import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
+    private enum class Mode { PHOTO, VIDEO }
+
     private lateinit var binding: ActivityMainBinding
     private lateinit var renderer: CcdRenderer
     private val executor = Executors.newSingleThreadExecutor()
     private val ioScope = CoroutineScope(Dispatchers.IO)
+    private val uiHandler = Handler(Looper.getMainLooper())
 
     private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
     private var pendingSurfaceTexture: SurfaceTexture? = null
 
-    // recording state
+    private var mode = Mode.VIDEO
     private var videoRecorder: VideoRecorder? = null
     private var recordingFile: File? = null
+    private var recordStartMs = 0L
+    private var blinkOn = false
+
+    private lateinit var scaleDetector: ScaleGestureDetector
+
+    private val tickRunnable = object : Runnable {
+        override fun run() {
+            if (videoRecorder != null) {
+                val elapsed = SystemClock.elapsedRealtime() - recordStartMs
+                binding.timecode.text = formatTimecode(elapsed)
+                blinkOn = !blinkOn
+                binding.recDot.visibility = if (blinkOn) View.VISIBLE else View.INVISIBLE
+                uiHandler.postDelayed(this, 500)
+            }
+        }
+    }
 
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -63,6 +90,23 @@ class MainActivity : AppCompatActivity() {
         binding.glView.setRenderer(renderer)
         binding.glView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
 
+        // pinch-to-zoom
+        scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val cam = camera ?: return false
+                val zs = cam.cameraInfo.zoomState.value ?: return false
+                val newRatio = (zs.zoomRatio * detector.scaleFactor)
+                    .coerceIn(zs.minZoomRatio, zs.maxZoomRatio)
+                cam.cameraControl.setZoomRatio(newRatio)
+                updateZoomLabel(newRatio)
+                return true
+            }
+        })
+        binding.glView.setOnTouchListener { _, ev: MotionEvent ->
+            scaleDetector.onTouchEvent(ev)
+            true
+        }
+
         binding.flipBtn.setOnClickListener {
             if (videoRecorder != null) {
                 Toast.makeText(this, "Stop recording before flipping", Toast.LENGTH_SHORT).show()
@@ -73,59 +117,35 @@ class MainActivity : AppCompatActivity() {
             startCamera()
         }
 
-        binding.recordBtn.setOnClickListener { toggleRecording() }
-
-        binding.photoBtn.setOnClickListener {
-            if (videoRecorder != null) {
-                Toast.makeText(this, "Stop recording first", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+        binding.shutterBtn.setOnClickListener {
+            when (mode) {
+                Mode.PHOTO -> capturePhoto()
+                Mode.VIDEO -> toggleRecording()
             }
-            capturePhoto()
         }
 
+        binding.galleryBtn.setOnClickListener { openGallery() }
+
+        binding.modePhoto.setOnClickListener { setMode(Mode.PHOTO) }
+        binding.modeVideo.setOnClickListener { setMode(Mode.VIDEO) }
+
+        setMode(Mode.VIDEO)
         if (!hasPerms()) permLauncher.launch(REQUIRED_PERMS)
     }
 
-    private fun capturePhoto() {
-        binding.photoBtn.isEnabled = false
-        renderer.requestFrameSnapshot { bmp ->
-            if (bmp == null) {
-                runOnUiThread {
-                    Toast.makeText(this, "Capture failed", Toast.LENGTH_SHORT).show()
-                    binding.photoBtn.isEnabled = true
-                }
-                return@requestFrameSnapshot
-            }
-            ioScope.launch {
-                val uri = savePhoto(bmp)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        if (uri != null) "Saved to Pictures/CCDCam" else "Save failed",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    binding.photoBtn.isEnabled = true
-                }
-            }
+    private fun setMode(m: Mode) {
+        if (videoRecorder != null && m != Mode.VIDEO) {
+            stopRecording()
         }
-    }
-
-    private fun savePhoto(bmp: Bitmap): android.net.Uri? {
-        val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
-            .format(System.currentTimeMillis())
-        val cv = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.jpg")
-            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CCDCam")
-            }
-        }
-        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
-            ?: return null
-        contentResolver.openOutputStream(uri)?.use { os ->
-            bmp.compress(Bitmap.CompressFormat.JPEG, 92, os)
-        } ?: return null
-        return uri
+        mode = m
+        val active = ContextCompat.getColor(this, R.color.hud_accent)
+        val dim = ContextCompat.getColor(this, R.color.hud_dim)
+        binding.modePhoto.setTextColor(if (m == Mode.PHOTO) active else dim)
+        binding.modeVideo.setTextColor(if (m == Mode.VIDEO) active else dim)
+        binding.shutterBtn.setBackgroundResource(
+            if (m == Mode.PHOTO) R.drawable.shutter_photo else R.drawable.shutter_video
+        )
+        binding.timecode.text = if (m == Mode.PHOTO) "PHOTO" else "00:00"
     }
 
     private fun hasPerms(): Boolean = REQUIRED_PERMS.all {
@@ -154,11 +174,58 @@ class MainActivity : AppCompatActivity() {
 
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
             try {
-                provider.bindToLifecycle(this, selector, preview)
+                camera = provider.bindToLifecycle(this, selector, preview)
+                updateZoomLabel(camera?.cameraInfo?.zoomState?.value?.zoomRatio ?: 1f)
             } catch (e: Exception) {
                 Toast.makeText(this, "Camera bind failed: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun updateZoomLabel(ratio: Float) {
+        binding.zoomTxt.text = String.format(Locale.US, "%.1f×", ratio)
+    }
+
+    private fun capturePhoto() {
+        binding.shutterBtn.isEnabled = false
+        renderer.requestFrameSnapshot { bmp ->
+            if (bmp == null) {
+                runOnUiThread {
+                    Toast.makeText(this, "Capture failed", Toast.LENGTH_SHORT).show()
+                    binding.shutterBtn.isEnabled = true
+                }
+                return@requestFrameSnapshot
+            }
+            ioScope.launch {
+                val uri = savePhoto(bmp)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        if (uri != null) "Saved to Pictures/CCDCam" else "Save failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    binding.shutterBtn.isEnabled = true
+                }
+            }
+        }
+    }
+
+    private fun savePhoto(bmp: Bitmap): android.net.Uri? {
+        val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+            .format(System.currentTimeMillis())
+        val cv = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.jpg")
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CCDCam")
+            }
+        }
+        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
+            ?: return null
+        contentResolver.openOutputStream(uri)?.use { os ->
+            bmp.compress(Bitmap.CompressFormat.JPEG, 92, os)
+        } ?: return null
+        return uri
     }
 
     private fun toggleRecording() {
@@ -166,9 +233,6 @@ class MainActivity : AppCompatActivity() {
             stopRecording()
             return
         }
-        // Encode at the same dimensions as the on-screen preview so the saved
-        // video looks like what the user sees (CCD filter + portrait stretch).
-        // H.264 requires even dimensions.
         val w = binding.glView.width.coerceAtLeast(2).let { if (it % 2 == 0) it else it - 1 }
         val h = binding.glView.height.coerceAtLeast(2).let { if (it % 2 == 0) it else it - 1 }
         if (w < 16 || h < 16) {
@@ -186,7 +250,9 @@ class MainActivity : AppCompatActivity() {
         videoRecorder = rec
         recordingFile = outFile
         renderer.setEncoderSurface(rec.inputSurface, w, h, rec.startNs)
-        binding.recordBtn.text = getString(R.string.stop)
+        binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video_recording)
+        recordStartMs = SystemClock.elapsedRealtime()
+        uiHandler.post(tickRunnable)
     }
 
     private fun stopRecording() {
@@ -195,7 +261,10 @@ class MainActivity : AppCompatActivity() {
         videoRecorder = null
         recordingFile = null
         renderer.setEncoderSurface(null, 0, 0)
-        binding.recordBtn.text = getString(R.string.record)
+        binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video)
+        binding.recDot.visibility = View.INVISIBLE
+        binding.timecode.text = "00:00"
+        uiHandler.removeCallbacks(tickRunnable)
 
         ioScope.launch {
             try {
@@ -236,9 +305,30 @@ class MainActivity : AppCompatActivity() {
         return uri
     }
 
-    override fun onResume() { super.onResume(); binding.glView.onResume() }
+    private fun openGallery() {
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                type = "image/*"
+            }
+            startActivity(intent)
+        } catch (_: Throwable) {
+            Toast.makeText(this, "No gallery app", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun formatTimecode(ms: Long): String {
+        val total = ms / 1000
+        return String.format(Locale.US, "%02d:%02d", total / 60, total % 60)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        binding.glView.onResume()
+    }
+
     override fun onPause() {
         if (videoRecorder != null) stopRecording()
+        uiHandler.removeCallbacks(tickRunnable)
         binding.glView.onPause()
         super.onPause()
     }
