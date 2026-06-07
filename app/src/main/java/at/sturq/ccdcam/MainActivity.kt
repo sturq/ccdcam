@@ -29,6 +29,13 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.MediaStoreOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.databinding.ActivityMainBinding
 import kotlinx.coroutines.CoroutineScope
@@ -57,8 +64,8 @@ class MainActivity : AppCompatActivity() {
     private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
-    private var videoRecorder: VideoRecorder? = null
-    private var recordingFile: java.io.File? = null
+    private var videoCapture: VideoCapture<Recorder>? = null
+    private var activeRecording: Recording? = null
     private var pendingSurfaceTexture: SurfaceTexture? = null
 
     private var mode = Mode.VIDEO
@@ -110,7 +117,7 @@ class MainActivity : AppCompatActivity() {
 
     private val tickRunnable = object : Runnable {
         override fun run() {
-            if (videoRecorder != null) {
+            if (activeRecording != null) {
                 val elapsed = SystemClock.elapsedRealtime() - recordStartMs
                 binding.timecode.text = formatTimecode(elapsed)
                 blinkOn = !blinkOn
@@ -137,7 +144,7 @@ class MainActivity : AppCompatActivity() {
             .format(System.currentTimeMillis())
 
         binding.flipBtn.setOnClickListener {
-            if (videoRecorder != null) {
+            if (activeRecording != null) {
                 Toast.makeText(this, "Stop recording before flipping", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
@@ -177,8 +184,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setMode(m: Mode) {
-        if (videoRecorder != null && m != Mode.VIDEO) {
-            stopRecordingAndSave()
+        if (activeRecording != null && m != Mode.VIDEO) {
+            activeRecording?.stop()
+            activeRecording = null
+            uiHandler.removeCallbacks(tickRunnable)
         }
         mode = m
         updateModeTabs()
@@ -249,9 +258,16 @@ class MainActivity : AppCompatActivity() {
                 req.provideSurface(surface, executor) { surface.release() }
             }
 
+            val recorder = Recorder.Builder()
+                .setQualitySelector(QualitySelector.from(Quality.HD))
+                .build()
+            videoCapture = VideoCapture.withOutput(recorder).also {
+                it.targetRotation = currentDisplayRotation()
+            }
+
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
             try {
-                camera = provider.bindToLifecycle(this, selector, preview)
+                camera = provider.bindToLifecycle(this, selector, preview, videoCapture!!)
                 updateZoomLabel(1f)
                 binding.zoomSeek.progress = 0
             } catch (e: Exception) {
@@ -365,71 +381,32 @@ class MainActivity : AppCompatActivity() {
         return uri
     }
 
+    private fun currentDisplayRotation(): Int {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R)
+            display?.rotation ?: Surface.ROTATION_0
+        else
+            @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation
+    }
+
     private fun toggleRecording() {
-        if (videoRecorder != null) {
+        val current = activeRecording
+        if (current != null) {
             sound.play(MediaActionSound.STOP_VIDEO_RECORDING)
-            stopRecordingAndSave()
+            current.stop()
+            activeRecording = null
+            binding.captureBtn.setBackgroundResource(R.drawable.rec_button)
+            binding.modeTxt.text = "STBY"
+            binding.recDot.visibility = View.INVISIBLE
+            uiHandler.removeCallbacks(tickRunnable)
             return
         }
-        // dimensions: keep aspect of contentAspect, target portrait at ~720p short edge
-        val targetShort = 720
-        val targetLong = (targetShort / renderer.contentAspect).toInt().let { l ->
-            // round to even (H.264 requires even dims)
-            if (l % 2 == 0) l else l + 1
-        }
-        val w = targetShort
-        val h = targetLong
-        val outFile = java.io.File(cacheDir, "rec_${System.currentTimeMillis()}.mp4")
-        val rec = VideoRecorder(this, w, h)
-        try {
-            rec.start(outFile)
-        } catch (t: Throwable) {
-            Toast.makeText(this, "Recorder start failed: ${t.message}", Toast.LENGTH_LONG).show()
+        val vc = videoCapture ?: run {
+            Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show()
             return
         }
-        videoRecorder = rec
-        recordingFile = outFile
-        renderer.setEncoderSurface(rec.inputSurface, w, h)
-        sound.play(MediaActionSound.START_VIDEO_RECORDING)
-        recordStartMs = SystemClock.elapsedRealtime()
-        binding.modeTxt.text = "REC"
-        binding.captureBtn.setBackgroundResource(R.drawable.rec_button_active)
-        uiHandler.post(tickRunnable)
-    }
-
-    private fun stopRecordingAndSave() {
-        val rec = videoRecorder ?: return
-        val file = recordingFile
-        videoRecorder = null
-        recordingFile = null
-        renderer.setEncoderSurface(null, 0, 0)
-        binding.captureBtn.setBackgroundResource(R.drawable.rec_button)
-        binding.modeTxt.text = "STBY"
-        binding.recDot.visibility = View.INVISIBLE
-        uiHandler.removeCallbacks(tickRunnable)
-
-        ioScope.launch {
-            try {
-                rec.stop()
-                val savedUri = if (file != null && file.exists() && file.length() > 0)
-                    importVideoToGallery(file) else null
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        if (savedUri != null) "Saved to Movies/CCDCam" else "Save failed",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-                file?.delete()
-            } catch (t: Throwable) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Save error: ${t.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    private fun importVideoToGallery(file: java.io.File): android.net.Uri? {
+        // Refresh rotation to whatever the device is right now so portrait phones get
+        // portrait video and landscape phones get landscape video.
+        vc.targetRotation = currentDisplayRotation()
         val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             .format(System.currentTimeMillis())
         val cv = ContentValues().apply {
@@ -439,12 +416,33 @@ class MainActivity : AppCompatActivity() {
                 put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/CCDCam")
             }
         }
-        val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, cv)
-            ?: return null
-        contentResolver.openOutputStream(uri)?.use { os ->
-            file.inputStream().use { it.copyTo(os) }
-        } ?: return null
-        return uri
+        val output = MediaStoreOutputOptions.Builder(
+            contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        ).setContentValues(cv).build()
+
+        val pending = vc.output.prepareRecording(this, output)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED) {
+            pending.withAudioEnabled()
+        }
+        sound.play(MediaActionSound.START_VIDEO_RECORDING)
+        activeRecording = pending.start(ContextCompat.getMainExecutor(this)) { event ->
+            when (event) {
+                is VideoRecordEvent.Start -> {
+                    recordStartMs = SystemClock.elapsedRealtime()
+                    binding.modeTxt.text = "REC"
+                    binding.captureBtn.setBackgroundResource(R.drawable.rec_button_active)
+                    uiHandler.post(tickRunnable)
+                }
+                is VideoRecordEvent.Finalize -> {
+                    if (event.hasError()) {
+                        Toast.makeText(this, "Record error: ${event.error}", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(this, "Saved to Movies/CCDCam", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
     }
 
     private fun formatTimecode(ms: Long): String {
@@ -459,8 +457,14 @@ class MainActivity : AppCompatActivity() {
             .format(System.currentTimeMillis())
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        videoCapture?.targetRotation = currentDisplayRotation()
+    }
+
     override fun onPause() {
-        if (videoRecorder != null) stopRecordingAndSave()
+        activeRecording?.stop()
+        activeRecording = null
         uiHandler.removeCallbacks(tickRunnable)
         binding.glView.onPause()
         super.onPause()
