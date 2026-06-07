@@ -4,4 +4,8 @@
     <string name="stop">STOP</string>
     <string name="switch_camera">flip</string>
     <string name="perm_denied">Camera + Mic permission needed</string>
+    <string name="pick_media">Pick photo or video</string>
+    <string name="mode_photo">PHOTO</string>
+    <string name="mode_video">VIDEO</string>
+    <string name="mode_edit">EDIT</string>
 </resources>

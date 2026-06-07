@@ -3,6 +3,7 @@ package at.sturq.ccdcam
 import android.Manifest
 import android.content.ContentValues
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.opengl.GLSurfaceView
 import android.os.Bundle
@@ -14,7 +15,9 @@ import android.util.Size
 import android.view.Surface
 import android.view.View
 import android.widget.SeekBar
+import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.Camera
@@ -31,16 +34,23 @@ import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.databinding.ActivityMainBinding
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
+    private enum class Mode { PHOTO, VIDEO, EDIT }
+
     private lateinit var binding: ActivityMainBinding
     private lateinit var renderer: CcdRenderer
     private val executor = Executors.newSingleThreadExecutor()
     private val uiHandler = Handler(Looper.getMainLooper())
+    private val ioScope = CoroutineScope(Dispatchers.IO)
 
     private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var cameraProvider: ProcessCameraProvider? = null
@@ -49,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private var activeRecording: Recording? = null
     private var pendingSurfaceTexture: SurfaceTexture? = null
 
+    private var mode = Mode.VIDEO
     private var recordStartMs = 0L
     private var blinkOn = false
 
@@ -57,6 +68,42 @@ class MainActivity : AppCompatActivity() {
     ) { result ->
         if (result.values.all { it }) startCamera()
         else Toast.makeText(this, R.string.perm_denied, Toast.LENGTH_LONG).show()
+    }
+
+    private val pickMedia = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        binding.captureBtn.isEnabled = false
+        Toast.makeText(this, "Processing...", Toast.LENGTH_SHORT).show()
+        ioScope.launch {
+            try {
+                val out = PhotoFilter.process(this@MainActivity, uri)
+                if (out == null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Could not decode", Toast.LENGTH_LONG).show()
+                        binding.captureBtn.isEnabled = true
+                    }
+                    return@launch
+                }
+                val savedUri = saveImage(out)
+                withContext(Dispatchers.Main) {
+                    binding.photoPreview.setImageBitmap(out)
+                    binding.photoPreview.visibility = View.VISIBLE
+                    Toast.makeText(
+                        this@MainActivity,
+                        if (savedUri != null) "Saved to Pictures/CCDCam" else "Save failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    binding.captureBtn.isEnabled = true
+                }
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Error: ${t.message}", Toast.LENGTH_LONG).show()
+                    binding.captureBtn.isEnabled = true
+                }
+            }
+        }
     }
 
     private val tickRunnable = object : Runnable {
@@ -97,19 +144,35 @@ class MainActivity : AppCompatActivity() {
             startCamera()
         }
 
-        binding.recordBtn.setOnClickListener { toggleRecording() }
+        binding.captureBtn.setOnClickListener { onCapture() }
+
+        binding.galleryBtn.setOnClickListener {
+            setMode(Mode.EDIT)
+            pickMedia.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
+        }
+
+        binding.modePhoto.setOnClickListener { setMode(Mode.PHOTO) }
+        binding.modeVideo.setOnClickListener { setMode(Mode.VIDEO) }
+        binding.modeEdit.setOnClickListener {
+            setMode(Mode.EDIT)
+            pickMedia.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
+        }
 
         binding.zoomSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                applyZoom(progress / 100f)
+            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                applyZoom(p / 100f)
             }
             override fun onStartTrackingTouch(sb: SeekBar?) {}
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
         binding.stretchSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                val s = STRETCH_MIN + (STRETCH_MAX - STRETCH_MIN) * (progress / 100f)
+            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                val s = STRETCH_MIN + (STRETCH_MAX - STRETCH_MIN) * (p / 100f)
                 renderer.stretch = s
                 binding.stretchVal.text = String.format(Locale.US, "%.2fx", s)
             }
@@ -117,7 +180,47 @@ class MainActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
+        setMode(Mode.VIDEO)
         if (!hasPerms()) permLauncher.launch(REQUIRED_PERMS)
+    }
+
+    private fun setMode(m: Mode) {
+        if (activeRecording != null && m != Mode.VIDEO) {
+            activeRecording?.stop(); activeRecording = null
+            uiHandler.removeCallbacks(tickRunnable)
+        }
+        mode = m
+        updateModeTabs()
+        when (m) {
+            Mode.PHOTO -> {
+                binding.captureBtn.setBackgroundResource(R.drawable.photo_button)
+                binding.photoPreview.visibility = View.GONE
+                binding.glView.visibility = View.VISIBLE
+                binding.modeTxt.text = "PHOTO"
+            }
+            Mode.VIDEO -> {
+                binding.captureBtn.setBackgroundResource(R.drawable.rec_button)
+                binding.photoPreview.visibility = View.GONE
+                binding.glView.visibility = View.VISIBLE
+                binding.modeTxt.text = "STBY"
+            }
+            Mode.EDIT -> {
+                binding.captureBtn.setBackgroundResource(R.drawable.save_button)
+                binding.modeTxt.text = "EDIT"
+            }
+        }
+    }
+
+    private fun updateModeTabs() {
+        val active = ContextCompat.getColor(this, R.color.hud_accent)
+        val dim = ContextCompat.getColor(this, R.color.hud_dim)
+        listOf(
+            binding.modePhoto to Mode.PHOTO,
+            binding.modeVideo to Mode.VIDEO,
+            binding.modeEdit to Mode.EDIT
+        ).forEach { (tv: TextView, m) ->
+            tv.setTextColor(if (mode == m) active else dim)
+        }
     }
 
     private fun hasPerms(): Boolean = REQUIRED_PERMS.all {
@@ -140,6 +243,8 @@ class MainActivity : AppCompatActivity() {
             preview.setSurfaceProvider { req: SurfaceRequest ->
                 val res = req.resolution
                 st.setDefaultBufferSize(res.width, res.height)
+                // After 90deg rotation, the content displayed is portrait (h/w aspect)
+                renderer.contentAspect = res.height.toFloat() / res.width.toFloat()
                 val surface = Surface(st)
                 req.provideSurface(surface, executor) { surface.release() }
             }
@@ -177,12 +282,64 @@ class MainActivity : AppCompatActivity() {
         binding.zoomTxt.text = String.format(Locale.US, "%s  %.1fx", track, ratio)
     }
 
+    private fun onCapture() {
+        when (mode) {
+            Mode.VIDEO -> toggleRecording()
+            Mode.PHOTO -> capturePhoto()
+            Mode.EDIT -> {
+                Toast.makeText(this, "Pick an image via the gallery icon", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun capturePhoto() {
+        binding.captureBtn.isEnabled = false
+        renderer.requestFrameSnapshot { bmp ->
+            if (bmp == null) {
+                runOnUiThread {
+                    Toast.makeText(this, "Capture failed", Toast.LENGTH_SHORT).show()
+                    binding.captureBtn.isEnabled = true
+                }
+                return@requestFrameSnapshot
+            }
+            ioScope.launch {
+                val savedUri = saveImage(bmp)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        if (savedUri != null) "Saved to Pictures/CCDCam" else "Save failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    binding.captureBtn.isEnabled = true
+                }
+            }
+        }
+    }
+
+    private fun saveImage(bmp: Bitmap): android.net.Uri? {
+        val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+            .format(System.currentTimeMillis())
+        val cv = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.jpg")
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CCDCam")
+            }
+        }
+        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
+            ?: return null
+        contentResolver.openOutputStream(uri)?.use { os ->
+            bmp.compress(Bitmap.CompressFormat.JPEG, 92, os)
+        } ?: return null
+        return uri
+    }
+
     private fun toggleRecording() {
         val current = activeRecording
         if (current != null) {
             current.stop()
             activeRecording = null
-            binding.recordBtn.setBackgroundResource(R.drawable.rec_button)
+            binding.captureBtn.setBackgroundResource(R.drawable.rec_button)
             binding.modeTxt.text = "STBY"
             binding.recDot.visibility = View.INVISIBLE
             uiHandler.removeCallbacks(tickRunnable)
@@ -194,7 +351,7 @@ class MainActivity : AppCompatActivity() {
         }
         val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             .format(System.currentTimeMillis())
-        val contentValues = ContentValues().apply {
+        val cv = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.mp4")
             put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
@@ -202,9 +359,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val output = MediaStoreOutputOptions.Builder(
-            contentResolver,
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        ).setContentValues(contentValues).build()
+            contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        ).setContentValues(cv).build()
 
         val pending = vc.output.prepareRecording(this, output)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
@@ -216,18 +372,14 @@ class MainActivity : AppCompatActivity() {
                 is VideoRecordEvent.Start -> {
                     recordStartMs = SystemClock.elapsedRealtime()
                     binding.modeTxt.text = "REC"
-                    binding.recordBtn.setBackgroundResource(R.drawable.rec_button_active)
+                    binding.captureBtn.setBackgroundResource(R.drawable.rec_button_active)
                     uiHandler.post(tickRunnable)
                 }
                 is VideoRecordEvent.Finalize -> {
                     if (event.hasError()) {
-                        Toast.makeText(
-                            this, "Record error: ${event.error}", Toast.LENGTH_LONG
-                        ).show()
+                        Toast.makeText(this, "Record error: ${event.error}", Toast.LENGTH_LONG).show()
                     } else {
-                        Toast.makeText(
-                            this, "Saved to Movies/CCDCam", Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(this, "Saved to Movies/CCDCam", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -236,10 +388,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun formatTimecode(ms: Long): String {
         val total = ms / 1000
-        val h = total / 3600
-        val m = (total % 3600) / 60
-        val s = total % 60
-        return String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
+        return String.format(Locale.US, "%02d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
     }
 
     override fun onResume() {

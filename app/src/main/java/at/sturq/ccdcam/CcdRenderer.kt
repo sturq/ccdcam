@@ -1,11 +1,12 @@
 package at.sturq.ccdcam
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
-import android.opengl.Matrix
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -44,13 +45,21 @@ class CcdRenderer(
     private var uTimeLoc = 0
     private var uTextureLoc = 0
     private var uStretchLoc = 0
+    private var uDisplayAspectLoc = 0
+    private var uContentAspectLoc = 0
 
     private var width = 1
     private var height = 1
     private val startNs = System.nanoTime()
 
     @Volatile var stretch: Float = 1.0f
+    @Volatile var contentAspect: Float = 9f / 16f  // post-rotation camera w/h
     @Volatile private var frameAvailable = false
+    @Volatile private var pendingSnapshot: ((Bitmap?) -> Unit)? = null
+
+    fun requestFrameSnapshot(cb: (Bitmap?) -> Unit) {
+        pendingSnapshot = cb
+    }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         val vsrc = GlUtil.loadAsset(context, "shaders/passthrough.vert")
@@ -64,6 +73,8 @@ class CcdRenderer(
         uTimeLoc = GLES20.glGetUniformLocation(program, "uTime")
         uTextureLoc = GLES20.glGetUniformLocation(program, "sTexture")
         uStretchLoc = GLES20.glGetUniformLocation(program, "uStretch")
+        uDisplayAspectLoc = GLES20.glGetUniformLocation(program, "uDisplayAspect")
+        uContentAspectLoc = GLES20.glGetUniformLocation(program, "uContentAspect")
 
         vertexBuf = ByteBuffer.allocateDirect(vertexCoords.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
@@ -115,6 +126,8 @@ class CcdRenderer(
         val t = (System.nanoTime() - startNs) / 1_000_000_000f
         GLES20.glUniform1f(uTimeLoc, t)
         GLES20.glUniform1f(uStretchLoc, stretch)
+        GLES20.glUniform1f(uDisplayAspectLoc, width.toFloat() / height.toFloat())
+        GLES20.glUniform1f(uContentAspectLoc, contentAspect)
 
         vertexBuf.position(0)
         GLES20.glEnableVertexAttribArray(aPosLoc)
@@ -130,6 +143,24 @@ class CcdRenderer(
 
         GLES20.glDisableVertexAttribArray(aPosLoc)
         GLES20.glDisableVertexAttribArray(aTexLoc)
+
+        val snap = pendingSnapshot
+        if (snap != null) {
+            pendingSnapshot = null
+            try { snap(readBitmap()) } catch (e: Throwable) { snap(null) }
+        }
+    }
+
+    private fun readBitmap(): Bitmap {
+        val w = width; val h = height
+        val buf = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder())
+        GLES20.glReadPixels(0, 0, w, h, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf)
+        buf.rewind()
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        bmp.copyPixelsFromBuffer(buf)
+        // glReadPixels gives bottom-up; flip Y
+        val m = Matrix().apply { postScale(1f, -1f) }
+        return Bitmap.createBitmap(bmp, 0, 0, w, h, m, false)
     }
 
     override fun onFrameAvailable(st: SurfaceTexture?) {

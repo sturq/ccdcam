@@ -6,6 +6,8 @@ uniform samplerExternalOES sTexture;
 uniform vec2 uResolution;
 uniform float uTime;
 uniform float uStretch;
+uniform float uDisplayAspect; // surface w / h
+uniform float uContentAspect; // camera w / h after rotation
 
 // constants kept in sync with tools/sim.py
 const float LINES = 480.0;
@@ -40,11 +42,29 @@ float brightMask(vec2 uv, float threshold) {
 }
 
 void main() {
+    // letterbox: map screen UV -> content UV preserving content aspect, black outside
+    vec2 screenUv = vTexCoord;
+    vec2 contentUv;
+    if (uDisplayAspect < uContentAspect) {
+        // screen narrower than content: black bars top + bottom
+        float frac = uDisplayAspect / uContentAspect;
+        float off = (1.0 - frac) * 0.5;
+        float my = (screenUv.y - off) / frac;
+        if (my < 0.0 || my > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+        contentUv = vec2(screenUv.x, my);
+    } else {
+        // screen wider than content: black bars left + right
+        float frac = uContentAspect / uDisplayAspect;
+        float off = (1.0 - frac) * 0.5;
+        float mx = (screenUv.x - off) / frac;
+        if (mx < 0.0 || mx > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+        contentUv = vec2(mx, screenUv.y);
+    }
     // apply user stretch: >1 zoom in horizontally, <1 widen field of view
-    vec2 uv = vec2((vTexCoord.x - 0.5) / max(uStretch, 0.1) + 0.5, vTexCoord.y);
+    vec2 uv = vec2((contentUv.x - 0.5) / max(uStretch, 0.1) + 0.5, contentUv.y);
     uv = clamp(uv, vec2(0.0), vec2(1.0));
 
-    // 1. base sample (no quantize — let the GPU bilinear handle it; quantize was causing precision issues)
+    // 1. base sample
     vec3 col = texture2D(sTexture, uv).rgb;
 
     // 2. vertical CCD smear: small number of samples up & down, only blown-highlight pixels contribute
