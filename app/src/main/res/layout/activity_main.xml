@@ -132,17 +132,6 @@
             android:contentDescription="@string/shutter" />
 
         <ImageButton
-            android:id="@+id/galleryBtn"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_gravity="center_vertical|start"
-            android:layout_marginStart="36dp"
-            android:background="@drawable/round_button_bg"
-            android:src="@drawable/ic_gallery"
-            android:padding="12dp"
-            android:contentDescription="@string/gallery" />
-
-        <ImageButton
             android:id="@+id/flipBtn"
             android:layout_width="48dp"
             android:layout_height="48dp"

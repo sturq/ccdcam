@@ -124,8 +124,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.galleryBtn.setOnClickListener { openGallery() }
-
         binding.modePhoto.setOnClickListener { setMode(Mode.PHOTO) }
         binding.modeVideo.setOnClickListener { setMode(Mode.VIDEO) }
 
@@ -303,17 +301,6 @@ class MainActivity : AppCompatActivity() {
             file.inputStream().use { it.copyTo(os) }
         } ?: return null
         return uri
-    }
-
-    private fun openGallery() {
-        try {
-            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                type = "image/*"
-            }
-            startActivity(intent)
-        } catch (_: Throwable) {
-            Toast.makeText(this, "No gallery app", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun formatTimecode(ms: Long): String {
