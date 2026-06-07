@@ -1,66 +1,55 @@
 # CCDCam
 
-Open-source camcorder filter for Android. Live camera preview runs through a GLSL fragment shader that fakes the look of a Sony Handycam / Hi8 / MiniDV: vertical highlight smear from bright lights, chroma noise, scanlines, lifted blacks, warm color cast.
-
-Built as a free alternative to subscription apps like Dazz Cam, 1888 and RarVid.
+Live camcorder filter for Android. Camera preview is rendered through a GLSL fragment shader that fakes the look of a Sony Handycam / Hi8 / MiniDV: vertical highlight smear, chroma noise, scanlines, lifted blacks, warm color cast.
 
 ## Why
 
-Dazz Cam costs about 5 EUR a month, 1888 is iOS only, and every other Android option in the Play Store is a different shade of paywall plus ads. The actual "old camcorder" look is mostly one well-tuned fragment shader. So here it is, open.
+The 90s-camcorder look has become its own visual genre on Instagram and TikTok skate clips. Getting it on a phone today usually means either hunting a used Sony VX1000 on eBay or signing up for a subscription camera app. Neither is necessary. The whole effect is a fragment shader you can read and tune.
 
-## What's in the shader
+## What the shader does
 
-`app/src/main/assets/shaders/ccd.frag` does, in order:
+`app/src/main/assets/shaders/ccd.frag`, in order:
 
-1. Resolution downsample to ~480 lines (camcorder grid)
-2. Vertical CCD smear: each pixel scans up and down its column for bright spots and adds a streak. This is the hardware artifact you get on real CCD sensors when light overloads the readout register.
-3. Per-frame chroma noise on the R and B channels
-4. Luma grain
-5. Lifted blacks, warm color grade, slight desaturation
-6. Horizontal scanline modulation
-7. Vignette
+1. Resolution downsample to ~480 lines
+2. Vertical CCD smear. Each pixel scans its column for bright spots and adds a streak. This is the hardware artifact you get on real CCD sensors when light overloads the readout register.
+3. Horizontal flare around highlights
+4. Per-frame chroma noise on R and B
+5. Luma grain
+6. Lifted blacks, warm grade, slight desaturation
+7. Horizontal scanline modulation
+8. Vignette
 
-Every section has its constants at the top, so tweaking the look is a one-liner.
+Each section has its constants at the top, so dialing the look is a one-liner.
 
 ## Status
 
-`v0.1` is what's in main right now. Live preview with the filter, front/back camera flip, no recording yet.
+`v0.1` is live in `main`: filtered preview, front/back flip. No recording yet.
 
-`v0.2` adds recording. A second EGL surface feeds the same shader output into MediaCodec, muxed with AAC audio into MP4 via MediaMuxer, saved to the gallery through MediaStore.
+`v0.2` is recording. A second EGL surface feeds the same shader output into MediaCodec, muxed with AAC audio into MP4 via MediaMuxer, saved to the gallery through MediaStore.
 
-`v0.3` is the iOS port. Same shader logic translated to SkSL or Metal, wrapped in a SwiftUI camera view.
+`v0.3` is the iOS port. Same shader translated to SkSL or Metal, wrapped in a SwiftUI camera view.
 
-## Building
+## Install
 
-GitHub Actions builds a debug APK on every push. Grab it from the Actions tab, "build-apk" workflow, "ccdcam-debug" artifact.
+Latest pre-built APK is on the [Releases page](https://github.com/sturq/ccdcam/releases). Download, tap, install (you'll need to allow installs from unknown sources for your browser or file manager).
 
-Locally on any machine with the Android SDK installed:
+If you'd rather build it yourself, push to your fork and grab the artifact from the `build-apk` workflow, or run locally:
 
 ```
 ./gradlew assembleDebug
 ```
 
-APK lands in `app/build/outputs/apk/debug/app-debug.apk`.
-
-## Installing on the phone
-
-From a terminal with `adb` and USB debugging enabled:
-
-```
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-Or just transfer the APK to the phone and tap it.
-
 ## Tweaking the look
 
-Open `app/src/main/assets/shaders/ccd.frag` and change the numbers. Some useful starting points:
+Open `app/src/main/assets/shaders/ccd.frag` and edit the constants. Useful knobs:
 
-- Less smear: lower `0.85` in the `smoothstep(0.85, 1.0, lu)` line, or drop the `* 3.5` multiplier
-- More tape grain: raise the `0.06` in the luma grain section
-- More scanlines: raise the `0.04` in `0.96 + 0.04 * sin(...)`
-- Warmer / cooler: edit the `vec3(1.08, 1.02, 0.93)` color grade
-- Different resolution feel: change `float lines = 480.0` (240 = Video8, 576 = PAL, 720 = early HDV)
+- Smear strength: the `0.85` threshold and the `* 3.5` multiplier in the vertical smear loop
+- Tape grain amount: the `0.06` in the luma grain section
+- Scanline contrast: the `0.04` in `0.96 + 0.04 * sin(...)`
+- Color grade: the `vec3(1.08, 1.02, 0.93)` warm tint
+- Resolution feel: `float lines = 480.0` (240 for Video8, 576 for PAL, 720 for early HDV)
+
+A reference Python implementation of the same algorithm lives in `tools/sim.py`. Run it on a JPEG to preview shader tweaks without rebuilding the app.
 
 ## License
 

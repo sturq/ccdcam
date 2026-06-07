@@ -7,8 +7,21 @@ on:
   workflow_dispatch:
 
 jobs:
+  shader-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install deps
+        run: pip install numpy pillow
+      - name: Run shader sim tests
+        run: python tools/test_sim.py
+
   apk:
     runs-on: ubuntu-latest
+    needs: shader-tests
     steps:
       - uses: actions/checkout@v4
 
@@ -33,3 +46,4 @@ jobs:
           name: ccdcam-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 7

@@ -12,3 +12,5 @@ captures/
 *.keystore
 *.jks
 release/
+__pycache__/
+*.pyc
