@@ -44,16 +44,18 @@ class CcdRenderer(
     private var uResLoc = 0
     private var uTimeLoc = 0
     private var uTextureLoc = 0
-    private var uStretchLoc = 0
     private var uDisplayAspectLoc = 0
     private var uContentAspectLoc = 0
+    private var uRotationDegLoc = 0
+    private var uMirrorLoc = 0
 
     private var width = 1
     private var height = 1
     private val startNs = System.nanoTime()
 
-    @Volatile var stretch: Float = 1.0f
-    @Volatile var contentAspect: Float = 9f / 16f  // post-rotation camera w/h
+    @Volatile var contentAspect: Float = 9f / 16f
+    @Volatile var rotationDeg: Float = 90f      // back camera in portrait
+    @Volatile var mirror: Boolean = false       // true for front camera
     @Volatile private var frameAvailable = false
     @Volatile private var pendingSnapshot: ((Bitmap?) -> Unit)? = null
 
@@ -72,9 +74,10 @@ class CcdRenderer(
         uResLoc = GLES20.glGetUniformLocation(program, "uResolution")
         uTimeLoc = GLES20.glGetUniformLocation(program, "uTime")
         uTextureLoc = GLES20.glGetUniformLocation(program, "sTexture")
-        uStretchLoc = GLES20.glGetUniformLocation(program, "uStretch")
         uDisplayAspectLoc = GLES20.glGetUniformLocation(program, "uDisplayAspect")
         uContentAspectLoc = GLES20.glGetUniformLocation(program, "uContentAspect")
+        uRotationDegLoc = GLES20.glGetUniformLocation(program, "uRotationDeg")
+        uMirrorLoc = GLES20.glGetUniformLocation(program, "uMirror")
 
         vertexBuf = ByteBuffer.allocateDirect(vertexCoords.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
@@ -125,9 +128,10 @@ class CcdRenderer(
         GLES20.glUniform2f(uResLoc, width.toFloat(), height.toFloat())
         val t = (System.nanoTime() - startNs) / 1_000_000_000f
         GLES20.glUniform1f(uTimeLoc, t)
-        GLES20.glUniform1f(uStretchLoc, stretch)
         GLES20.glUniform1f(uDisplayAspectLoc, width.toFloat() / height.toFloat())
         GLES20.glUniform1f(uContentAspectLoc, contentAspect)
+        GLES20.glUniform1f(uRotationDegLoc, rotationDeg)
+        GLES20.glUniform1f(uMirrorLoc, if (mirror) 1f else 0f)
 
         vertexBuf.position(0)
         GLES20.glEnableVertexAttribArray(aPosLoc)
@@ -135,8 +139,6 @@ class CcdRenderer(
 
         texBuf.position(0)
         GLES20.glEnableVertexAttribArray(aTexLoc)
-        // texCoords are 2D, but shader expects vec4 — pad in vertex shader. We pass as vec2 via attribute
-        // by using size=2 and the shader treats z=0,w=1 by default for attributes.
         GLES20.glVertexAttribPointer(aTexLoc, 2, GLES20.GL_FLOAT, false, 0, texBuf)
 
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)

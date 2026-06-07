@@ -1,13 +1,15 @@
 #extension GL_OES_EGL_image_external : require
 precision highp float;
 
-varying vec2 vTexCoord;
+varying vec2 vScreenUv;
 uniform samplerExternalOES sTexture;
+uniform mat4 uTexMatrix;
 uniform vec2 uResolution;
 uniform float uTime;
-uniform float uStretch;
 uniform float uDisplayAspect; // surface w / h
-uniform float uContentAspect; // camera w / h after rotation
+uniform float uContentAspect; // displayed content w / h (post-rotation)
+uniform float uRotationDeg;   // 0/90/180/270 — rotation applied before texMatrix
+uniform float uMirror;        // 1.0 to mirror horizontally (front camera)
 
 // constants kept in sync with tools/sim.py
 const float LINES = 480.0;
@@ -35,39 +37,47 @@ float hash(vec2 p) {
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
+vec2 toTex(vec2 uv) {
+    vec2 c = uv - 0.5;
+    float a = radians(uRotationDeg);
+    float ca = cos(a), sa = sin(a);
+    vec2 r = vec2(ca * c.x - sa * c.y, sa * c.x + ca * c.y) + 0.5;
+    if (uMirror > 0.5) r.x = 1.0 - r.x;
+    return (uTexMatrix * vec4(r, 0.0, 1.0)).xy;
+}
+
+vec3 sampleCam(vec2 uv) {
+    return texture2D(sTexture, toTex(clamp(uv, vec2(0.0), vec2(1.0)))).rgb;
+}
+
 float brightMask(vec2 uv, float threshold) {
-    vec2 cl = clamp(uv, vec2(0.001), vec2(0.999));
-    float l = luma(texture2D(sTexture, cl).rgb);
+    float l = luma(sampleCam(uv));
     return smoothstep(threshold, 1.0, l);
 }
 
 void main() {
-    // letterbox: map screen UV -> content UV preserving content aspect, black outside
-    vec2 screenUv = vTexCoord;
+    // letterbox in screen space: map screen UV -> content UV preserving aspect
+    vec2 screenUv = vScreenUv;
     vec2 contentUv;
     if (uDisplayAspect < uContentAspect) {
-        // screen narrower than content: black bars top + bottom
         float frac = uDisplayAspect / uContentAspect;
         float off = (1.0 - frac) * 0.5;
         float my = (screenUv.y - off) / frac;
         if (my < 0.0 || my > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
         contentUv = vec2(screenUv.x, my);
     } else {
-        // screen wider than content: black bars left + right
         float frac = uContentAspect / uDisplayAspect;
         float off = (1.0 - frac) * 0.5;
         float mx = (screenUv.x - off) / frac;
         if (mx < 0.0 || mx > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
         contentUv = vec2(mx, screenUv.y);
     }
-    // apply user stretch: >1 zoom in horizontally, <1 widen field of view
-    vec2 uv = vec2((contentUv.x - 0.5) / max(uStretch, 0.1) + 0.5, contentUv.y);
-    uv = clamp(uv, vec2(0.0), vec2(1.0));
+    vec2 uv = contentUv;
 
     // 1. base sample
-    vec3 col = texture2D(sTexture, uv).rgb;
+    vec3 col = sampleCam(uv);
 
-    // 2. vertical CCD smear: small number of samples up & down, only blown-highlight pixels contribute
+    // 2. vertical CCD smear
     float smear = 0.0;
     for (int i = 1; i <= SMEAR_SAMPLES; i++) {
         float t = float(i) / float(SMEAR_SAMPLES);

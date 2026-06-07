@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
+import android.media.MediaActionSound
 import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Handler
@@ -51,6 +52,11 @@ class MainActivity : AppCompatActivity() {
     private val executor = Executors.newSingleThreadExecutor()
     private val uiHandler = Handler(Looper.getMainLooper())
     private val ioScope = CoroutineScope(Dispatchers.IO)
+    private val sound = MediaActionSound().apply {
+        load(MediaActionSound.SHUTTER_CLICK)
+        load(MediaActionSound.START_VIDEO_RECORDING)
+        load(MediaActionSound.STOP_VIDEO_RECORDING)
+    }
 
     private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var cameraProvider: ProcessCameraProvider? = null
@@ -170,16 +176,6 @@ class MainActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
-        binding.stretchSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
-                val s = STRETCH_MIN + (STRETCH_MAX - STRETCH_MIN) * (p / 100f)
-                renderer.stretch = s
-                binding.stretchVal.text = String.format(Locale.US, "%.2fx", s)
-            }
-            override fun onStartTrackingTouch(sb: SeekBar?) {}
-            override fun onStopTrackingTouch(sb: SeekBar?) {}
-        })
-
         setMode(Mode.VIDEO)
         if (!hasPerms()) permLauncher.launch(REQUIRED_PERMS)
     }
@@ -245,6 +241,9 @@ class MainActivity : AppCompatActivity() {
                 st.setDefaultBufferSize(res.width, res.height)
                 // After 90deg rotation, the content displayed is portrait (h/w aspect)
                 renderer.contentAspect = res.height.toFloat() / res.width.toFloat()
+                renderer.rotationDeg =
+                    if (lensFacing == CameraSelector.LENS_FACING_FRONT) 270f else 90f
+                renderer.mirror = lensFacing == CameraSelector.LENS_FACING_FRONT
                 val surface = Surface(st)
                 req.provideSurface(surface, executor) { surface.release() }
             }
@@ -294,6 +293,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun capturePhoto() {
         binding.captureBtn.isEnabled = false
+        sound.play(MediaActionSound.SHUTTER_CLICK)
         renderer.requestFrameSnapshot { bmp ->
             if (bmp == null) {
                 runOnUiThread {
@@ -337,6 +337,7 @@ class MainActivity : AppCompatActivity() {
     private fun toggleRecording() {
         val current = activeRecording
         if (current != null) {
+            sound.play(MediaActionSound.STOP_VIDEO_RECORDING)
             current.stop()
             activeRecording = null
             binding.captureBtn.setBackgroundResource(R.drawable.rec_button)
@@ -367,6 +368,7 @@ class MainActivity : AppCompatActivity() {
             == PackageManager.PERMISSION_GRANTED) {
             pending.withAudioEnabled()
         }
+        sound.play(MediaActionSound.START_VIDEO_RECORDING)
         activeRecording = pending.start(ContextCompat.getMainExecutor(this)) { event ->
             when (event) {
                 is VideoRecordEvent.Start -> {
@@ -406,12 +408,15 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
     }
 
+    override fun onDestroy() {
+        sound.release()
+        super.onDestroy()
+    }
+
     companion object {
         private val REQUIRED_PERMS = arrayOf(
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
         )
-        private const val STRETCH_MIN = 0.7f
-        private const val STRETCH_MAX = 1.3f
     }
 }
