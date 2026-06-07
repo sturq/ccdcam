@@ -16,6 +16,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Size
+import android.view.OrientationEventListener
 import android.view.Surface
 import android.view.View
 import android.widget.SeekBar
@@ -67,6 +68,30 @@ class MainActivity : AppCompatActivity() {
     private var videoCapture: VideoCapture<Recorder>? = null
     private var activeRecording: Recording? = null
     private var pendingSurfaceTexture: SurfaceTexture? = null
+
+    /**
+     * Tracks the physical device orientation via accelerometer (independent of the activity's
+     * locked portrait UI). Drives videoCapture.targetRotation so a sideways phone records
+     * landscape video and an upright phone records portrait video, like every other camera app.
+     */
+    @Volatile private var physicalRotation: Int = Surface.ROTATION_0
+    private val orientationListener by lazy {
+        object : OrientationEventListener(this) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
+                val rot = when {
+                    orientation in 45 until 135 -> Surface.ROTATION_270
+                    orientation in 135 until 225 -> Surface.ROTATION_180
+                    orientation in 225 until 315 -> Surface.ROTATION_90
+                    else -> Surface.ROTATION_0
+                }
+                if (rot != physicalRotation) {
+                    physicalRotation = rot
+                    videoCapture?.targetRotation = rot
+                }
+            }
+        }
+    }
 
     private var mode = Mode.VIDEO
     private var recordStartMs = 0L
@@ -262,7 +287,7 @@ class MainActivity : AppCompatActivity() {
                 .setQualitySelector(QualitySelector.from(Quality.HD))
                 .build()
             videoCapture = VideoCapture.withOutput(recorder).also {
-                it.targetRotation = currentDisplayRotation()
+                it.targetRotation = physicalRotation
             }
 
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
@@ -381,13 +406,6 @@ class MainActivity : AppCompatActivity() {
         return uri
     }
 
-    private fun currentDisplayRotation(): Int {
-        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R)
-            display?.rotation ?: Surface.ROTATION_0
-        else
-            @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation
-    }
-
     private fun toggleRecording() {
         val current = activeRecording
         if (current != null) {
@@ -404,9 +422,9 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show()
             return
         }
-        // Refresh rotation to whatever the device is right now so portrait phones get
-        // portrait video and landscape phones get landscape video.
-        vc.targetRotation = currentDisplayRotation()
+        // Use physical orientation from accelerometer (activity is locked portrait so
+        // display.rotation is always 0; the sensor is what tells us how the phone is held).
+        vc.targetRotation = physicalRotation
         val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             .format(System.currentTimeMillis())
         val cv = ContentValues().apply {
@@ -455,17 +473,14 @@ class MainActivity : AppCompatActivity() {
         binding.glView.onResume()
         binding.dateTxt.text = SimpleDateFormat("yyyy MM dd", Locale.US)
             .format(System.currentTimeMillis())
-    }
-
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
-        super.onConfigurationChanged(newConfig)
-        videoCapture?.targetRotation = currentDisplayRotation()
+        if (orientationListener.canDetectOrientation()) orientationListener.enable()
     }
 
     override fun onPause() {
         activeRecording?.stop()
         activeRecording = null
         uiHandler.removeCallbacks(tickRunnable)
+        orientationListener.disable()
         binding.glView.onPause()
         super.onPause()
     }
