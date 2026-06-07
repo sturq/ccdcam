@@ -5,6 +5,7 @@ varying vec2 vTexCoord;
 uniform samplerExternalOES sTexture;
 uniform vec2 uResolution;
 uniform float uTime;
+uniform float uStretch;
 
 // constants kept in sync with tools/sim.py
 const float LINES = 480.0;
@@ -39,7 +40,9 @@ float brightMask(vec2 uv, float threshold) {
 }
 
 void main() {
-    vec2 uv = vTexCoord;
+    // apply user stretch: >1 zoom in horizontally, <1 widen field of view
+    vec2 uv = vec2((vTexCoord.x - 0.5) / max(uStretch, 0.1) + 0.5, vTexCoord.y);
+    uv = clamp(uv, vec2(0.0), vec2(1.0));
 
     // 1. base sample (no quantize — let the GPU bilinear handle it; quantize was causing precision issues)
     vec3 col = texture2D(sTexture, uv).rgb;

@@ -43,11 +43,13 @@ class CcdRenderer(
     private var uResLoc = 0
     private var uTimeLoc = 0
     private var uTextureLoc = 0
+    private var uStretchLoc = 0
 
     private var width = 1
     private var height = 1
     private val startNs = System.nanoTime()
 
+    @Volatile var stretch: Float = 1.0f
     @Volatile private var frameAvailable = false
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
@@ -61,6 +63,7 @@ class CcdRenderer(
         uResLoc = GLES20.glGetUniformLocation(program, "uResolution")
         uTimeLoc = GLES20.glGetUniformLocation(program, "uTime")
         uTextureLoc = GLES20.glGetUniformLocation(program, "sTexture")
+        uStretchLoc = GLES20.glGetUniformLocation(program, "uStretch")
 
         vertexBuf = ByteBuffer.allocateDirect(vertexCoords.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
@@ -111,6 +114,7 @@ class CcdRenderer(
         GLES20.glUniform2f(uResLoc, width.toFloat(), height.toFloat())
         val t = (System.nanoTime() - startNs) / 1_000_000_000f
         GLES20.glUniform1f(uTimeLoc, t)
+        GLES20.glUniform1f(uStretchLoc, stretch)
 
         vertexBuf.position(0)
         GLES20.glEnableVertexAttribArray(aPosLoc)

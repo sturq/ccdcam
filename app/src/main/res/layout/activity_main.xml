@@ -2,40 +2,234 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black">
+    android:background="@color/hud_bg">
 
-    <android.opengl.GLSurfaceView
-        android:id="@+id/glView"
+    <!-- Preview wrapper, locked to 9:16, centered vertically -->
+    <FrameLayout
+        android:id="@+id/previewWrap"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        app:layout_constraintWidth_percent="1.0"
+        app:layout_constraintDimensionRatio="9:16"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent">
 
-    <Button
-        android:id="@+id/recordBtn"
-        android:layout_width="wrap_content"
+        <android.opengl.GLSurfaceView
+            android:id="@+id/glView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- Viewfinder corner brackets -->
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="top|start"
+            android:layout_margin="10dp"
+            android:src="@drawable/bracket_tl"
+            android:contentDescription="@null" />
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="10dp"
+            android:src="@drawable/bracket_tr"
+            android:contentDescription="@null" />
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="10dp"
+            android:src="@drawable/bracket_bl"
+            android:contentDescription="@null" />
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="10dp"
+            android:src="@drawable/bracket_br"
+            android:contentDescription="@null" />
+
+        <!-- Top HUD: STBY/REC + timecode + REC dot -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_gravity="top|start"
+            android:layout_marginTop="22dp"
+            android:layout_marginStart="22dp">
+
+            <View
+                android:id="@+id/recDot"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:background="@drawable/rec_dot"
+                android:visibility="invisible" />
+
+            <TextView
+                android:id="@+id/modeTxt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:fontFamily="monospace"
+                android:textStyle="bold"
+                android:textSize="13sp"
+                android:textColor="@color/hud_accent"
+                android:letterSpacing="0.12"
+                android:text="STBY"
+                tools:ignore="HardcodedText" />
+
+            <TextView
+                android:id="@+id/timecode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:fontFamily="monospace"
+                android:textSize="13sp"
+                android:textColor="@color/hud_text"
+                android:text="00:00:00"
+                tools:ignore="HardcodedText" />
+        </LinearLayout>
+
+        <!-- Date + version, top right -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="end"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="22dp"
+            android:layout_marginEnd="22dp">
+
+            <TextView
+                android:id="@+id/dateTxt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:textSize="12sp"
+                android:textColor="@color/hud_text"
+                android:letterSpacing="0.08"
+                android:text="2026 01 01"
+                tools:ignore="HardcodedText" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:textSize="9sp"
+                android:textColor="@color/hud_dim"
+                android:text="CCD CAM"
+                tools:ignore="HardcodedText" />
+        </LinearLayout>
+
+        <!-- Zoom indicator overlay (bottom-left of preview) -->
+        <TextView
+            android:id="@+id/zoomTxt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_marginStart="22dp"
+            android:layout_marginBottom="22dp"
+            android:fontFamily="monospace"
+            android:textSize="11sp"
+            android:textColor="@color/hud_text"
+            android:text="W ─── T  1.0x"
+            tools:ignore="HardcodedText" />
+    </FrameLayout>
+
+    <!-- Stretch slider (above bottom controls, full width) -->
+    <LinearLayout
+        android:id="@+id/stretchRow"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="@string/record"
-        android:textColor="@android:color/white"
-        android:backgroundTint="#CC222222"
-        android:layout_marginBottom="32dp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="22dp"
+        android:layout_marginBottom="8dp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottomBar">
 
-    <Button
-        android:id="@+id/flipBtn"
-        android:layout_width="wrap_content"
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="@color/hud_dim"
+            android:text="STR"
+            tools:ignore="HardcodedText" />
+
+        <SeekBar
+            android:id="@+id/stretchSeek"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginHorizontal="10dp"
+            android:max="100"
+            android:progress="50"
+            android:progressDrawable="@drawable/track_camcorder"
+            android:thumbTint="@color/hud_accent" />
+
+        <TextView
+            android:id="@+id/stretchVal"
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="@color/hud_text"
+            android:gravity="end"
+            android:text="1.00x"
+            tools:ignore="HardcodedText" />
+    </LinearLayout>
+
+    <!-- Bottom control bar: flip / REC / zoom seekbar (vertical hidden, replaced with side seek) -->
+    <FrameLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="@string/switch_camera"
-        android:textColor="@android:color/white"
-        android:backgroundTint="#CC222222"
-        android:layout_marginBottom="32dp"
-        android:layout_marginEnd="24dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        android:paddingTop="6dp"
+        android:paddingBottom="20dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <ImageButton
+            android:id="@+id/recordBtn"
+            android:layout_width="76dp"
+            android:layout_height="76dp"
+            android:layout_gravity="center"
+            android:background="@drawable/rec_button"
+            android:contentDescription="@string/record" />
+
+        <ImageButton
+            android:id="@+id/flipBtn"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_gravity="center_vertical|end"
+            android:layout_marginEnd="36dp"
+            android:background="@drawable/flip_button"
+            android:contentDescription="@string/switch_camera"
+            android:src="@drawable/ic_flip" />
+    </FrameLayout>
+
+    <!-- Vertical zoom seekbar on left edge of preview -->
+    <SeekBar
+        android:id="@+id/zoomSeek"
+        android:layout_width="180dp"
+        android:layout_height="wrap_content"
+        android:rotation="270"
+        android:max="100"
+        android:progress="0"
+        android:progressDrawable="@drawable/track_camcorder"
+        android:thumbTint="@color/hud_accent"
+        app:layout_constraintStart_toStartOf="@id/previewWrap"
+        app:layout_constraintTop_toTopOf="@id/previewWrap"
+        app:layout_constraintBottom_toBottomOf="@id/previewWrap"
+        android:layout_marginStart="-78dp" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
