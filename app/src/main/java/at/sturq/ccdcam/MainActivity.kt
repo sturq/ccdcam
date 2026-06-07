@@ -70,6 +70,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val dateRunnable = object : Runnable {
+        override fun run() {
+            binding.dateTxt.text = SimpleDateFormat("yyyy MM dd", Locale.US)
+                .format(System.currentTimeMillis())
+            uiHandler.postDelayed(this, 60_000)
+        }
+    }
+
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
@@ -143,7 +151,8 @@ class MainActivity : AppCompatActivity() {
         binding.shutterBtn.setBackgroundResource(
             if (m == Mode.PHOTO) R.drawable.shutter_photo else R.drawable.shutter_video
         )
-        binding.timecode.text = if (m == Mode.PHOTO) "PHOTO" else "00:00"
+        binding.modeTxt.text = if (m == Mode.PHOTO) "PHOTO" else "STBY"
+        binding.timecode.text = if (m == Mode.PHOTO) "          " else "00:00:00:00"
     }
 
     private fun hasPerms(): Boolean = REQUIRED_PERMS.all {
@@ -182,6 +191,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateZoomLabel(ratio: Float) {
         binding.zoomTxt.text = String.format(Locale.US, "%.1f×", ratio)
+        // dim zoom when at 1x, accent when zoomed in
+        val color = if (ratio > 1.05f) R.color.hud_accent else R.color.hud_dim
+        binding.zoomTxt.setTextColor(ContextCompat.getColor(this, color))
     }
 
     private fun capturePhoto() {
@@ -231,6 +243,7 @@ class MainActivity : AppCompatActivity() {
             stopRecording()
             return
         }
+        binding.modeTxt.text = "REC"
         val w = binding.glView.width.coerceAtLeast(2).let { if (it % 2 == 0) it else it - 1 }
         val h = binding.glView.height.coerceAtLeast(2).let { if (it % 2 == 0) it else it - 1 }
         if (w < 16 || h < 16) {
@@ -261,7 +274,8 @@ class MainActivity : AppCompatActivity() {
         renderer.setEncoderSurface(null, 0, 0)
         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video)
         binding.recDot.visibility = View.INVISIBLE
-        binding.timecode.text = "00:00"
+        binding.modeTxt.text = "STBY"
+        binding.timecode.text = "00:00:00:00"
         uiHandler.removeCallbacks(tickRunnable)
 
         ioScope.launch {
@@ -304,18 +318,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun formatTimecode(ms: Long): String {
-        val total = ms / 1000
-        return String.format(Locale.US, "%02d:%02d", total / 60, total % 60)
+        val totalSec = ms / 1000
+        val frames = ((ms % 1000) * 30 / 1000).toInt()  // simulated 30fps frame counter
+        return String.format(
+            Locale.US, "%02d:%02d:%02d:%02d",
+            totalSec / 3600, (totalSec % 3600) / 60, totalSec % 60, frames
+        )
     }
 
     override fun onResume() {
         super.onResume()
         binding.glView.onResume()
+        uiHandler.post(dateRunnable)
     }
 
     override fun onPause() {
         if (videoRecorder != null) stopRecording()
         uiHandler.removeCallbacks(tickRunnable)
+        uiHandler.removeCallbacks(dateRunnable)
         binding.glView.onPause()
         super.onPause()
     }

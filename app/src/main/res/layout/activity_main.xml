@@ -8,19 +8,29 @@
     android:background="@color/hud_bg"
     android:fitsSystemWindows="true">
 
-    <!-- top status bar: REC dot + timecode + zoom -->
+    <!-- ============== PREVIEW (full-bleed under HUD) ============== -->
+    <android.opengl.GLSurfaceView
+        android:id="@+id/glView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/modeRow"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- ============== TOP HUD: REC dot + STBY/REC + timecode + tape mode + battery ============== -->
     <LinearLayout
-        android:id="@+id/topBar"
+        android:id="@+id/topHud"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="20dp"
+        android:paddingHorizontal="16dp"
         android:paddingTop="14dp"
-        android:paddingBottom="10dp"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        android:paddingBottom="8dp"
+        app:layout_constraintTop_toTopOf="@id/glView"
+        app:layout_constraintStart_toStartOf="@id/glView"
+        app:layout_constraintEnd_toEndOf="@id/glView">
 
         <View
             android:id="@+id/recDot"
@@ -30,15 +40,28 @@
             android:visibility="invisible" />
 
         <TextView
+            android:id="@+id/modeTxt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:fontFamily="monospace"
+            android:textStyle="bold"
+            android:textSize="12sp"
+            android:textColor="@color/hud_accent"
+            android:letterSpacing="0.14"
+            android:text="STBY"
+            tools:ignore="HardcodedText" />
+
+        <TextView
             android:id="@+id/timecode"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="10dp"
             android:fontFamily="monospace"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:textColor="@color/hud_text"
-            android:letterSpacing="0.1"
-            android:text="00:00"
+            android:letterSpacing="0.08"
+            android:text="00:00:00:00"
             tools:ignore="HardcodedText" />
 
         <Space
@@ -47,28 +70,138 @@
             android:layout_weight="1" />
 
         <TextView
-            android:id="@+id/zoomTxt"
+            android:id="@+id/tapeMode"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:fontFamily="monospace"
-            android:textSize="12sp"
+            android:textSize="11sp"
+            android:textColor="@color/hud_dim"
+            android:letterSpacing="0.14"
+            android:text="SP  HD"
+            tools:ignore="HardcodedText" />
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="12dp"
+            android:layout_marginStart="10dp"
+            android:src="@drawable/battery_indicator"
+            android:contentDescription="@null" />
+    </LinearLayout>
+
+    <!-- viewfinder corner brackets -->
+    <ImageView
+        android:layout_width="22dp" android:layout_height="22dp"
+        android:layout_margin="14dp"
+        android:src="@drawable/bracket_tl"
+        android:contentDescription="@null"
+        app:layout_constraintTop_toBottomOf="@id/topHud"
+        app:layout_constraintStart_toStartOf="@id/glView" />
+    <ImageView
+        android:layout_width="22dp" android:layout_height="22dp"
+        android:layout_margin="14dp"
+        android:src="@drawable/bracket_tr"
+        android:contentDescription="@null"
+        app:layout_constraintTop_toBottomOf="@id/topHud"
+        app:layout_constraintEnd_toEndOf="@id/glView" />
+    <ImageView
+        android:layout_width="22dp" android:layout_height="22dp"
+        android:layout_margin="14dp"
+        android:src="@drawable/bracket_bl"
+        android:contentDescription="@null"
+        app:layout_constraintBottom_toTopOf="@id/bottomHud"
+        app:layout_constraintStart_toStartOf="@id/glView" />
+    <ImageView
+        android:layout_width="22dp" android:layout_height="22dp"
+        android:layout_margin="14dp"
+        android:src="@drawable/bracket_br"
+        android:contentDescription="@null"
+        app:layout_constraintBottom_toTopOf="@id/bottomHud"
+        app:layout_constraintEnd_toEndOf="@id/glView" />
+
+    <!-- vertical zoom indicator pinned to right edge of preview -->
+    <LinearLayout
+        android:id="@+id/zoomBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:layout_marginEnd="16dp"
+        app:layout_constraintTop_toBottomOf="@id/topHud"
+        app:layout_constraintBottom_toTopOf="@id/bottomHud"
+        app:layout_constraintEnd_toEndOf="@id/glView">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="@color/hud_dim"
+            android:text="T"
+            tools:ignore="HardcodedText" />
+        <TextView
+            android:id="@+id/zoomTxt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginVertical="8dp"
+            android:fontFamily="monospace"
+            android:textSize="11sp"
             android:textColor="@color/hud_accent"
-            android:letterSpacing="0.05"
+            android:letterSpacing="0.04"
             android:text="1.0×"
+            tools:ignore="HardcodedText" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="@color/hud_dim"
+            android:text="W"
             tools:ignore="HardcodedText" />
     </LinearLayout>
 
-    <!-- preview filling remaining vertical space -->
-    <android.opengl.GLSurfaceView
-        android:id="@+id/glView"
+    <!-- bottom of preview HUD: date stamp -->
+    <LinearLayout
+        android:id="@+id/bottomHud"
         android:layout_width="0dp"
-        android:layout_height="0dp"
-        app:layout_constraintTop_toBottomOf="@id/topBar"
-        app:layout_constraintBottom_toTopOf="@id/modeRow"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingBottom="12dp"
+        app:layout_constraintBottom_toBottomOf="@id/glView"
+        app:layout_constraintStart_toStartOf="@id/glView"
+        app:layout_constraintEnd_toEndOf="@id/glView">
 
-    <!-- mode toggle: PHOTO | VIDEO -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="@color/hud_dim"
+            android:letterSpacing="0.1"
+            android:text="CCD CAM"
+            tools:ignore="HardcodedText" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/dateTxt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="@color/hud_text"
+            android:letterSpacing="0.1"
+            android:text="2026 01 01"
+            tools:ignore="HardcodedText" />
+    </LinearLayout>
+
+    <!-- ============== ANDROID-NATIVE CONTROLS BELOW PREVIEW ============== -->
+
+    <!-- mode toggle -->
     <LinearLayout
         android:id="@+id/modeRow"
         android:layout_width="0dp"
@@ -112,7 +245,6 @@
             tools:ignore="HardcodedText" />
     </LinearLayout>
 
-    <!-- bottom control bar: gallery | shutter | flip -->
     <FrameLayout
         android:id="@+id/controlRow"
         android:layout_width="0dp"

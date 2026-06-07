@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp" android:height="12dp"
+    android:viewportWidth="22" android:viewportHeight="12">
+    <path android:strokeColor="@color/hud_text" android:strokeWidth="1"
+        android:fillColor="#00000000"
+        android:pathData="M0.5,1.5 L17.5,1.5 L17.5,10.5 L0.5,10.5 Z" />
+    <path android:fillColor="@color/hud_text"
+        android:pathData="M18,4 L20,4 L20,8 L18,8 Z" />
+    <path android:fillColor="@color/hud_accent"
+        android:pathData="M2,3 L5,3 L5,9 L2,9 Z M6,3 L9,3 L9,9 L6,9 Z M10,3 L13,3 L13,9 L10,9 Z" />
+</vector>
