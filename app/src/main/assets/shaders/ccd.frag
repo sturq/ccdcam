@@ -3,13 +3,11 @@ precision highp float;
 
 varying vec2 vScreenUv;
 uniform samplerExternalOES sTexture;
-uniform mat4 uTexMatrix;
+uniform mat4 uTexMatrix;     // includes camera Y-flip AND our rotation/mirror
 uniform vec2 uResolution;
 uniform float uTime;
 uniform float uDisplayAspect; // surface w / h
 uniform float uContentAspect; // displayed content w / h (post-rotation)
-uniform float uRotationDeg;   // 0/90/180/270 — rotation applied before texMatrix
-uniform float uMirror;        // 1.0 to mirror horizontally (front camera)
 
 // constants kept in sync with tools/sim.py
 const float LINES = 480.0;
@@ -37,42 +35,31 @@ float hash(vec2 p) {
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
-vec2 toTex(vec2 uv) {
-    vec2 c = uv - 0.5;
-    float a = radians(uRotationDeg);
-    float ca = cos(a), sa = sin(a);
-    vec2 r = vec2(ca * c.x - sa * c.y, sa * c.x + ca * c.y) + 0.5;
-    if (uMirror > 0.5) r.x = 1.0 - r.x;
-    return (uTexMatrix * vec4(r, 0.0, 1.0)).xy;
-}
-
 vec3 sampleCam(vec2 uv) {
-    return texture2D(sTexture, toTex(clamp(uv, vec2(0.0), vec2(1.0)))).rgb;
+    vec2 cl = clamp(uv, vec2(0.0), vec2(1.0));
+    vec2 tex = (uTexMatrix * vec4(cl, 0.0, 1.0)).xy;
+    return texture2D(sTexture, tex).rgb;
 }
 
 float brightMask(vec2 uv, float threshold) {
-    float l = luma(sampleCam(uv));
-    return smoothstep(threshold, 1.0, l);
+    return smoothstep(threshold, 1.0, luma(sampleCam(uv)));
 }
 
 void main() {
-    // letterbox in screen space: map screen UV -> content UV preserving aspect
-    vec2 screenUv = vScreenUv;
-    vec2 contentUv;
+    // COVER: scale content to fill viewport, crop overflow on the long axis
+    vec2 s = vScreenUv;
+    vec2 uv;
     if (uDisplayAspect < uContentAspect) {
-        float frac = uDisplayAspect / uContentAspect;
-        float off = (1.0 - frac) * 0.5;
-        float my = (screenUv.y - off) / frac;
-        if (my < 0.0 || my > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
-        contentUv = vec2(screenUv.x, my);
+        // display more portrait than content -> crop content sides
+        float scale = uDisplayAspect / uContentAspect;
+        float off = (1.0 - scale) * 0.5;
+        uv = vec2(off + s.x * scale, s.y);
     } else {
-        float frac = uContentAspect / uDisplayAspect;
-        float off = (1.0 - frac) * 0.5;
-        float mx = (screenUv.x - off) / frac;
-        if (mx < 0.0 || mx > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
-        contentUv = vec2(mx, screenUv.y);
+        // display wider than content -> crop content top/bottom
+        float scale = uContentAspect / uDisplayAspect;
+        float off = (1.0 - scale) * 0.5;
+        uv = vec2(s.x, off + s.y * scale);
     }
-    vec2 uv = contentUv;
 
     // 1. base sample
     vec3 col = sampleCam(uv);

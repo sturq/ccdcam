@@ -2,9 +2,12 @@ package at.sturq.ccdcam
 
 import android.Manifest
 import android.content.ContentValues
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.media.MediaActionSound
 import android.opengl.GLSurfaceView
 import android.os.Bundle
@@ -236,13 +239,19 @@ class MainActivity : AppCompatActivity() {
                 .setTargetResolution(Size(1280, 720))
                 .build()
 
+            val rotDeg = computeRotation()
+            val sensorRotated = rotDeg == 90f || rotDeg == 270f
+
             preview.setSurfaceProvider { req: SurfaceRequest ->
                 val res = req.resolution
                 st.setDefaultBufferSize(res.width, res.height)
-                // After 90deg rotation, the content displayed is portrait (h/w aspect)
-                renderer.contentAspect = res.height.toFloat() / res.width.toFloat()
-                renderer.rotationDeg =
-                    if (lensFacing == CameraSelector.LENS_FACING_FRONT) 270f else 90f
+                // After our shader rotation, displayed width/height may swap
+                renderer.contentAspect = if (sensorRotated) {
+                    res.height.toFloat() / res.width.toFloat()
+                } else {
+                    res.width.toFloat() / res.height.toFloat()
+                }
+                renderer.rotationDeg = rotDeg
                 renderer.mirror = lensFacing == CameraSelector.LENS_FACING_FRONT
                 val surface = Surface(st)
                 req.provideSurface(surface, executor) { surface.release() }
@@ -264,6 +273,43 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Camera bind failed: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun computeRotation(): Float {
+        val mgr = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val targetFacing = if (lensFacing == CameraSelector.LENS_FACING_FRONT)
+            CameraCharacteristics.LENS_FACING_FRONT
+        else
+            CameraCharacteristics.LENS_FACING_BACK
+        val sensorOrient = try {
+            mgr.cameraIdList.firstNotNullOfOrNull { id ->
+                val ch = mgr.getCameraCharacteristics(id)
+                if (ch.get(CameraCharacteristics.LENS_FACING) == targetFacing)
+                    ch.get(CameraCharacteristics.SENSOR_ORIENTATION)
+                else null
+            } ?: 90
+        } catch (_: Throwable) { 90 }
+
+        val displayRot = when (
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R)
+                display?.rotation ?: Surface.ROTATION_0
+            else
+                @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation
+        ) {
+            Surface.ROTATION_0 -> 0
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+
+        // Standard Camera2 orientation formula
+        val rot = if (lensFacing == CameraSelector.LENS_FACING_FRONT) {
+            (sensorOrient + displayRot) % 360
+        } else {
+            (sensorOrient - displayRot + 360) % 360
+        }
+        return rot.toFloat()
     }
 
     private fun applyZoom(linear: Float) {

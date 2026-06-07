@@ -12,6 +12,7 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
+import android.opengl.Matrix as GlMatrix
 
 class CcdRenderer(
     private val context: Context,
@@ -37,7 +38,9 @@ class CcdRenderer(
     private lateinit var vertexBuf: FloatBuffer
     private lateinit var texBuf: FloatBuffer
 
-    private val texMatrix = FloatArray(16)
+    private val rawTexMatrix = FloatArray(16)
+    private val rotMatrix = FloatArray(16)
+    private val finalMatrix = FloatArray(16)
     private var aPosLoc = 0
     private var aTexLoc = 0
     private var uTexMatrixLoc = 0
@@ -46,15 +49,13 @@ class CcdRenderer(
     private var uTextureLoc = 0
     private var uDisplayAspectLoc = 0
     private var uContentAspectLoc = 0
-    private var uRotationDegLoc = 0
-    private var uMirrorLoc = 0
 
     private var width = 1
     private var height = 1
     private val startNs = System.nanoTime()
 
     @Volatile var contentAspect: Float = 9f / 16f
-    @Volatile var rotationDeg: Float = 90f      // back camera in portrait
+    @Volatile var rotationDeg: Float = 90f      // back camera, portrait display
     @Volatile var mirror: Boolean = false       // true for front camera
     @Volatile private var frameAvailable = false
     @Volatile private var pendingSnapshot: ((Bitmap?) -> Unit)? = null
@@ -76,8 +77,6 @@ class CcdRenderer(
         uTextureLoc = GLES20.glGetUniformLocation(program, "sTexture")
         uDisplayAspectLoc = GLES20.glGetUniformLocation(program, "uDisplayAspect")
         uContentAspectLoc = GLES20.glGetUniformLocation(program, "uContentAspect")
-        uRotationDegLoc = GLES20.glGetUniformLocation(program, "uRotationDeg")
-        uMirrorLoc = GLES20.glGetUniformLocation(program, "uMirror")
 
         vertexBuf = ByteBuffer.allocateDirect(vertexCoords.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
@@ -107,14 +106,25 @@ class CcdRenderer(
         GLES20.glViewport(0, 0, w, h)
     }
 
+    private fun composeMatrix() {
+        // Build rotation+mirror around (0.5, 0.5) on UV plane, then pre-multiply with camera texMatrix
+        GlMatrix.setIdentityM(rotMatrix, 0)
+        GlMatrix.translateM(rotMatrix, 0, 0.5f, 0.5f, 0f)
+        GlMatrix.rotateM(rotMatrix, 0, rotationDeg, 0f, 0f, 1f)
+        if (mirror) GlMatrix.scaleM(rotMatrix, 0, -1f, 1f, 1f)
+        GlMatrix.translateM(rotMatrix, 0, -0.5f, -0.5f, 0f)
+        GlMatrix.multiplyMM(finalMatrix, 0, rawTexMatrix, 0, rotMatrix, 0)
+    }
+
     override fun onDrawFrame(gl: GL10?) {
         synchronized(this) {
             if (frameAvailable) {
                 surfaceTexture.updateTexImage()
-                surfaceTexture.getTransformMatrix(texMatrix)
+                surfaceTexture.getTransformMatrix(rawTexMatrix)
                 frameAvailable = false
             }
         }
+        composeMatrix()
 
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
@@ -124,14 +134,12 @@ class CcdRenderer(
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
         GLES20.glUniform1i(uTextureLoc, 0)
 
-        GLES20.glUniformMatrix4fv(uTexMatrixLoc, 1, false, texMatrix, 0)
+        GLES20.glUniformMatrix4fv(uTexMatrixLoc, 1, false, finalMatrix, 0)
         GLES20.glUniform2f(uResLoc, width.toFloat(), height.toFloat())
         val t = (System.nanoTime() - startNs) / 1_000_000_000f
         GLES20.glUniform1f(uTimeLoc, t)
         GLES20.glUniform1f(uDisplayAspectLoc, width.toFloat() / height.toFloat())
         GLES20.glUniform1f(uContentAspectLoc, contentAspect)
-        GLES20.glUniform1f(uRotationDegLoc, rotationDeg)
-        GLES20.glUniform1f(uMirrorLoc, if (mirror) 1f else 0f)
 
         vertexBuf.position(0)
         GLES20.glEnableVertexAttribArray(aPosLoc)
@@ -160,7 +168,6 @@ class CcdRenderer(
         buf.rewind()
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         bmp.copyPixelsFromBuffer(buf)
-        // glReadPixels gives bottom-up; flip Y
         val m = Matrix().apply { postScale(1f, -1f) }
         return Bitmap.createBitmap(bmp, 0, 0, w, h, m, false)
     }
