@@ -41,15 +41,15 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build APK (debug-signed for now, proper release signing in v0.2)
+      - name: Build release APK (non-debuggable, signed with bundled debug keystore)
         run: |
           gradle wrapper --gradle-version 8.9
-          ./gradlew assembleDebug --no-daemon --stacktrace \
+          ./gradlew assembleRelease --no-daemon --stacktrace \
             -PversionName=${{ steps.ver.outputs.num }}
 
       - name: Rename APK
         run: |
-          SRC=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          SRC=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
           DST="ccdcam-${{ steps.ver.outputs.tag }}.apk"
           cp "$SRC" "$DST"
           echo "APK=$DST" >> "$GITHUB_ENV"

@@ -103,7 +103,9 @@ class MainActivity : AppCompatActivity() {
             val recorder = Recorder.Builder()
                 .setQualitySelector(QualitySelector.from(Quality.HD))
                 .build()
-            videoCapture = VideoCapture.withOutput(recorder)
+            videoCapture = VideoCapture.withOutput(recorder).also {
+                it.targetRotation = Surface.ROTATION_0
+            }
 
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
             try {

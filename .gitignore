@@ -11,6 +11,7 @@ captures/
 *.aab
 *.keystore
 *.jks
+!app/debug.keystore
 release/
 __pycache__/
 *.pyc
