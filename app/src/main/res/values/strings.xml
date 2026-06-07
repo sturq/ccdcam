@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">CCDCam</string>
+    <string name="record">REC</string>
+    <string name="stop">STOP</string>
+    <string name="switch_camera">flip</string>
+    <string name="perm_denied">Camera + Mic permission needed</string>
+</resources>
