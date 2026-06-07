@@ -2,14 +2,20 @@ package at.sturq.ccdcam
 
 import android.content.Context
 import android.graphics.SurfaceTexture
+import android.opengl.EGL14
+import android.opengl.EGLConfig
+import android.opengl.EGLContext
+import android.opengl.EGLDisplay
+import android.opengl.EGLExt
+import android.opengl.EGLSurface
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
-import android.opengl.Matrix
+import android.view.Surface
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
-import javax.microedition.khronos.egl.EGLConfig
+import javax.microedition.khronos.egl.EGLConfig as JEGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 class CcdRenderer(
@@ -50,7 +56,30 @@ class CcdRenderer(
 
     @Volatile private var frameAvailable = false
 
-    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+    // ---- dual-surface (encoder) state ----
+    @Volatile private var pendingEncoderSurface: Surface? = null
+    @Volatile private var pendingEncoderWidth: Int = 0
+    @Volatile private var pendingEncoderHeight: Int = 0
+    @Volatile private var teardownEncoderSurface: Boolean = false
+    private var encoderEgl: EGLSurface? = null
+    private var encoderW = 0
+    private var encoderH = 0
+    private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
+    private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
+    private var eglConfig: EGLConfig? = null
+
+    /** Attach an encoder input Surface; renderer will dual-render to it until null is passed. */
+    fun setEncoderSurface(s: Surface?, w: Int, h: Int) {
+        if (s == null) {
+            teardownEncoderSurface = true
+        } else {
+            pendingEncoderSurface = s
+            pendingEncoderWidth = w
+            pendingEncoderHeight = h
+        }
+    }
+
+    override fun onSurfaceCreated(gl: GL10?, config: JEGLConfig?) {
         val vsrc = GlUtil.loadAsset(context, "shaders/passthrough.vert")
         val fsrc = GlUtil.loadAsset(context, "shaders/ccd.frag")
         program = GlUtil.makeProgram(vsrc, fsrc)
@@ -83,11 +112,72 @@ class CcdRenderer(
         surfaceTexture = SurfaceTexture(textureId)
         surfaceTexture.setOnFrameAvailableListener(this)
         onSurfaceTextureReady(surfaceTexture)
+
+        eglDisplay = EGL14.eglGetCurrentDisplay()
+        eglContext = EGL14.eglGetCurrentContext()
+        eglConfig = chooseRecordableConfig() ?: chooseFallbackConfig()
+    }
+
+    private fun chooseRecordableConfig(): EGLConfig? = chooseConfigWith(
+        intArrayOf(
+            EGL14.EGL_RED_SIZE, 8,
+            EGL14.EGL_GREEN_SIZE, 8,
+            EGL14.EGL_BLUE_SIZE, 8,
+            EGL14.EGL_ALPHA_SIZE, 8,
+            EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+            EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT,
+            EGL_ANDROID_RECORDABLE, 1,
+            EGL14.EGL_NONE
+        )
+    )
+
+    private fun chooseFallbackConfig(): EGLConfig? = chooseConfigWith(
+        intArrayOf(
+            EGL14.EGL_RED_SIZE, 8,
+            EGL14.EGL_GREEN_SIZE, 8,
+            EGL14.EGL_BLUE_SIZE, 8,
+            EGL14.EGL_ALPHA_SIZE, 8,
+            EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+            EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT,
+            EGL14.EGL_NONE
+        )
+    )
+
+    private fun chooseConfigWith(attribs: IntArray): EGLConfig? {
+        val cfgs = arrayOfNulls<EGLConfig>(1)
+        val n = IntArray(1)
+        return if (EGL14.eglChooseConfig(eglDisplay, attribs, 0, cfgs, 0, 1, n, 0) && n[0] > 0)
+            cfgs[0] else null
     }
 
     override fun onSurfaceChanged(gl: GL10?, w: Int, h: Int) {
         width = w; height = h
-        GLES20.glViewport(0, 0, w, h)
+    }
+
+    private fun drawTo(viewportW: Int, viewportH: Int) {
+        GLES20.glViewport(0, 0, viewportW, viewportH)
+        GLES20.glClearColor(0f, 0f, 0f, 1f)
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+        GLES20.glUseProgram(program)
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
+        GLES20.glUniform1i(uTextureLoc, 0)
+
+        GLES20.glUniformMatrix4fv(uTexMatrixLoc, 1, false, texMatrix, 0)
+        GLES20.glUniform2f(uResLoc, viewportW.toFloat(), viewportH.toFloat())
+        val t = (System.nanoTime() - startNs) / 1_000_000_000f
+        GLES20.glUniform1f(uTimeLoc, t)
+
+        vertexBuf.position(0)
+        GLES20.glEnableVertexAttribArray(aPosLoc)
+        GLES20.glVertexAttribPointer(aPosLoc, 2, GLES20.GL_FLOAT, false, 0, vertexBuf)
+        texBuf.position(0)
+        GLES20.glEnableVertexAttribArray(aTexLoc)
+        GLES20.glVertexAttribPointer(aTexLoc, 2, GLES20.GL_FLOAT, false, 0, texBuf)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(aPosLoc)
+        GLES20.glDisableVertexAttribArray(aTexLoc)
     }
 
     override fun onDrawFrame(gl: GL10?) {
@@ -99,36 +189,45 @@ class CcdRenderer(
             }
         }
 
-        GLES20.glClearColor(0f, 0f, 0f, 1f)
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
-        GLES20.glUseProgram(program)
+        // draw to display surface
+        drawTo(width, height)
 
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
-        GLES20.glUniform1i(uTextureLoc, 0)
+        // dual-render to encoder surface if attached
+        handleEncoderSurfaceLifecycle()
+        encoderEgl?.let { encSurf ->
+            val savedDraw = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW)
+            val savedRead = EGL14.eglGetCurrentSurface(EGL14.EGL_READ)
+            if (EGL14.eglMakeCurrent(eglDisplay, encSurf, encSurf, eglContext)) {
+                drawTo(encoderW, encoderH)
+                EGLExt.eglPresentationTimeANDROID(eglDisplay, encSurf, System.nanoTime())
+                EGL14.eglSwapBuffers(eglDisplay, encSurf)
+                EGL14.eglMakeCurrent(eglDisplay, savedDraw, savedRead, eglContext)
+            }
+        }
+    }
 
-        GLES20.glUniformMatrix4fv(uTexMatrixLoc, 1, false, texMatrix, 0)
-        GLES20.glUniform2f(uResLoc, width.toFloat(), height.toFloat())
-        val t = (System.nanoTime() - startNs) / 1_000_000_000f
-        GLES20.glUniform1f(uTimeLoc, t)
-
-        vertexBuf.position(0)
-        GLES20.glEnableVertexAttribArray(aPosLoc)
-        GLES20.glVertexAttribPointer(aPosLoc, 2, GLES20.GL_FLOAT, false, 0, vertexBuf)
-
-        texBuf.position(0)
-        GLES20.glEnableVertexAttribArray(aTexLoc)
-        // texCoords are 2D, but shader expects vec4 — pad in vertex shader. We pass as vec2 via attribute
-        // by using size=2 and the shader treats z=0,w=1 by default for attributes.
-        GLES20.glVertexAttribPointer(aTexLoc, 2, GLES20.GL_FLOAT, false, 0, texBuf)
-
-        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
-
-        GLES20.glDisableVertexAttribArray(aPosLoc)
-        GLES20.glDisableVertexAttribArray(aTexLoc)
+    private fun handleEncoderSurfaceLifecycle() {
+        if (teardownEncoderSurface) {
+            encoderEgl?.let { EGL14.eglDestroySurface(eglDisplay, it) }
+            encoderEgl = null
+            pendingEncoderSurface = null
+            teardownEncoderSurface = false
+        }
+        val ps = pendingEncoderSurface
+        if (encoderEgl == null && ps != null && eglConfig != null) {
+            val surfAttribs = intArrayOf(EGL14.EGL_NONE)
+            encoderEgl = EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, ps, surfAttribs, 0)
+            encoderW = pendingEncoderWidth
+            encoderH = pendingEncoderHeight
+            pendingEncoderSurface = null
+        }
     }
 
     override fun onFrameAvailable(st: SurfaceTexture?) {
         synchronized(this) { frameAvailable = true }
+    }
+
+    companion object {
+        private const val EGL_ANDROID_RECORDABLE = 0x3142
     }
 }
