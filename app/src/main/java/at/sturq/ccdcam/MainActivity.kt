@@ -3,6 +3,7 @@ package at.sturq.ccdcam
 import android.Manifest
 import android.content.ContentValues
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.opengl.GLSurfaceView
 import android.os.Bundle
@@ -74,7 +75,57 @@ class MainActivity : AppCompatActivity() {
 
         binding.recordBtn.setOnClickListener { toggleRecording() }
 
+        binding.photoBtn.setOnClickListener {
+            if (videoRecorder != null) {
+                Toast.makeText(this, "Stop recording first", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            capturePhoto()
+        }
+
         if (!hasPerms()) permLauncher.launch(REQUIRED_PERMS)
+    }
+
+    private fun capturePhoto() {
+        binding.photoBtn.isEnabled = false
+        renderer.requestFrameSnapshot { bmp ->
+            if (bmp == null) {
+                runOnUiThread {
+                    Toast.makeText(this, "Capture failed", Toast.LENGTH_SHORT).show()
+                    binding.photoBtn.isEnabled = true
+                }
+                return@requestFrameSnapshot
+            }
+            ioScope.launch {
+                val uri = savePhoto(bmp)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        if (uri != null) "Saved to Pictures/CCDCam" else "Save failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    binding.photoBtn.isEnabled = true
+                }
+            }
+        }
+    }
+
+    private fun savePhoto(bmp: Bitmap): android.net.Uri? {
+        val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+            .format(System.currentTimeMillis())
+        val cv = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.jpg")
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CCDCam")
+            }
+        }
+        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
+            ?: return null
+        contentResolver.openOutputStream(uri)?.use { os ->
+            bmp.compress(Bitmap.CompressFormat.JPEG, 92, os)
+        } ?: return null
+        return uri
     }
 
     private fun hasPerms(): Boolean = REQUIRED_PERMS.all {

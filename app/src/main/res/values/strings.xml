@@ -3,5 +3,6 @@
     <string name="record">REC</string>
     <string name="stop">STOP</string>
     <string name="switch_camera">flip</string>
+    <string name="photo">PHOTO</string>
     <string name="perm_denied">Camera + Mic permission needed</string>
 </resources>

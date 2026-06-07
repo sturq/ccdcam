@@ -28,6 +28,18 @@
         app:layout_constraintEnd_toEndOf="parent" />
 
     <Button
+        android:id="@+id/photoBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/photo"
+        android:textColor="@android:color/white"
+        android:backgroundTint="#CC222222"
+        android:layout_marginBottom="32dp"
+        android:layout_marginStart="24dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <Button
         android:id="@+id/flipBtn"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

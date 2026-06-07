@@ -40,7 +40,7 @@ class VideoRecorder(
         private const val AUDIO_MIME = "audio/mp4a-latm"
         private const val FRAME_RATE = 30
         private const val I_FRAME_INTERVAL = 1
-        private const val VIDEO_BITRATE = 8_000_000
+        private const val VIDEO_BITRATE = 12_000_000
         private const val AUDIO_SAMPLE_RATE = 44_100
         private const val AUDIO_BITRATE = 128_000
         private const val AUDIO_BUF_SIZE = 2048

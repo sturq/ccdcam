@@ -1,6 +1,8 @@
 package at.sturq.ccdcam
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.opengl.EGL14
 import android.opengl.EGLConfig
@@ -55,6 +57,7 @@ class CcdRenderer(
     private val startNs = System.nanoTime()
 
     @Volatile private var frameAvailable = false
+    @Volatile private var pendingSnapshot: ((Bitmap?) -> Unit)? = null
 
     // ---- dual-surface (encoder) state ----
     @Volatile private var pendingEncoderSurface: Surface? = null
@@ -64,6 +67,8 @@ class CcdRenderer(
     private var encoderEgl: EGLSurface? = null
     private var encoderW = 0
     private var encoderH = 0
+    private var lastEncoderFrameNs: Long = 0L
+    private val encoderFrameIntervalNs: Long = 1_000_000_000L / 30  // cap encoder to 30 fps
     private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
     private var eglConfig: EGLConfig? = null
@@ -76,8 +81,12 @@ class CcdRenderer(
             pendingEncoderSurface = s
             pendingEncoderWidth = w
             pendingEncoderHeight = h
+            lastEncoderFrameNs = 0L
         }
     }
+
+    /** Capture next rendered display frame as an upright Bitmap. */
+    fun requestFrameSnapshot(cb: (Bitmap?) -> Unit) { pendingSnapshot = cb }
 
     override fun onSurfaceCreated(gl: GL10?, config: JEGLConfig?) {
         val vsrc = GlUtil.loadAsset(context, "shaders/passthrough.vert")
@@ -192,18 +201,41 @@ class CcdRenderer(
         // draw to display surface
         drawTo(width, height)
 
-        // dual-render to encoder surface if attached
+        // photo snapshot: read display framebuffer back to a portrait bitmap
+        val snap = pendingSnapshot
+        if (snap != null) {
+            pendingSnapshot = null
+            try { snap(readBitmap()) } catch (_: Throwable) { snap(null) }
+        }
+
+        // dual-render to encoder surface if attached — throttled to 30fps so the
+        // encoder gets evenly-spaced frames and motion looks fluid instead of mushy.
         handleEncoderSurfaceLifecycle()
         encoderEgl?.let { encSurf ->
+            val now = System.nanoTime()
+            if (now - lastEncoderFrameNs < encoderFrameIntervalNs) return@let
+            lastEncoderFrameNs = now
             val savedDraw = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW)
             val savedRead = EGL14.eglGetCurrentSurface(EGL14.EGL_READ)
             if (EGL14.eglMakeCurrent(eglDisplay, encSurf, encSurf, eglContext)) {
                 drawTo(encoderW, encoderH)
-                EGLExt.eglPresentationTimeANDROID(eglDisplay, encSurf, System.nanoTime())
+                EGLExt.eglPresentationTimeANDROID(eglDisplay, encSurf, now)
                 EGL14.eglSwapBuffers(eglDisplay, encSurf)
                 EGL14.eglMakeCurrent(eglDisplay, savedDraw, savedRead, eglContext)
             }
         }
+    }
+
+    private fun readBitmap(): Bitmap {
+        val w = width; val h = height
+        val buf = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder())
+        GLES20.glReadPixels(0, 0, w, h, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf)
+        buf.rewind()
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        bmp.copyPixelsFromBuffer(buf)
+        // glReadPixels gives bottom-up; flip Y so the bitmap matches what's on screen
+        val m = Matrix().apply { postScale(1f, -1f) }
+        return Bitmap.createBitmap(bmp, 0, 0, w, h, m, false)
     }
 
     private fun handleEncoderSurfaceLifecycle() {
