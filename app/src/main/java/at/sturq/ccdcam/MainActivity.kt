@@ -222,8 +222,11 @@ class MainActivity : AppCompatActivity() {
 
     /** Push aspect-specific stretch factor into the shader and update the label. */
     private fun applyAspectToLayout() {
-        // same vertical zoom in both modes so both photos/videos feel equally stretched.
-        renderer.stretch = 0.72f
+        // 16:9 output is taller (1792 px) than 4:3 (1344 px) for the same width, so the same
+        // shader STRETCH value spreads the sampled source over more output pixels in 16:9 and
+        // visually feels more stretched. compensate by scaling 4:3's stretch by the output
+        // height ratio so both photos end up with equivalent per-pixel vertical zoom.
+        renderer.stretch = if (aspectRatio == AspectRatio.RATIO_4_3) 0.72f * 3f / 4f else 0.72f
         binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
     }
 
