@@ -334,8 +334,12 @@ class MainActivity : AppCompatActivity() {
         }
         val outFile = File(cacheDir, "rec_${System.currentTimeMillis()}.mp4")
         val rec = VideoRecorder(this, w, h)
+        // map physical phone rotation to MP4 orientation hint: a hint of N tells the
+        // player to rotate N° CW on playback so the (portrait-recorded) frames appear
+        // upright relative to how the phone was held. inverse of the physical angle.
+        val rotHint = (360 - physicalRotation) % 360
         try {
-            rec.start(outFile)
+            rec.start(outFile, rotHint)
         } catch (t: Throwable) {
             Toast.makeText(this, "Recorder start failed: ${t.message}", Toast.LENGTH_LONG).show()
             return

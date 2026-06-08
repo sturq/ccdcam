@@ -72,7 +72,7 @@ class VideoRecorder(
     var outputPath: String? = null
         private set
 
-    fun start(outFile: File) {
+    fun start(outFile: File, orientationHintDeg: Int = 0) {
         outputPath = outFile.absolutePath
 
         // ---- video encoder ----
@@ -121,6 +121,11 @@ class VideoRecorder(
         }
 
         muxer = MediaMuxer(outFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        // tell players how to rotate the portrait-shaped frames on playback so a phone
+        // held in landscape mode produces a landscape-displayed video.
+        if (orientationHintDeg in intArrayOf(0, 90, 180, 270)) {
+            muxer!!.setOrientationHint(orientationHintDeg)
+        }
         recording = true
         startNs = System.nanoTime()
 
