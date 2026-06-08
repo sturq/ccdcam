@@ -184,6 +184,11 @@ class MainActivity : AppCompatActivity() {
 
             preview.setSurfaceProvider { req: SurfaceRequest ->
                 val res = req.resolution
+                android.util.Log.i(
+                    "CCDCam",
+                    "Preview source resolution: ${res.width}x${res.height} " +
+                        "(aspect ${"%.3f".format(res.width.toFloat() / res.height)})"
+                )
                 st.setDefaultBufferSize(res.width, res.height)
                 val surface = Surface(st)
                 req.provideSurface(surface, executor) { surface.release() }
