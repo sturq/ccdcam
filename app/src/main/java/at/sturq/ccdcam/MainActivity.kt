@@ -55,18 +55,23 @@ class MainActivity : AppCompatActivity() {
     private var aspectRatio: Int = AspectRatio.RATIO_16_9
     private lateinit var prefs: SharedPreferences
 
-    /** Physical phone orientation from the accelerometer (0/90/180/270). Updated live by
-     *  [orientationListener]; sampled at shutter time so a sideways-held phone makes a
-     *  landscape photo. */
+    /**
+     * Physical phone orientation. Mapping follows GrapheneOS Camera: the angle stored is
+     * the rotation needed to put the captured image upright relative to how the phone is
+     * held (Surface.ROTATION_* convention, but as raw degrees).
+     */
     @Volatile private var physicalRotation: Int = 0
     private val orientationListener by lazy {
         object : OrientationEventListener(this) {
             override fun onOrientationChanged(orientation: Int) {
                 if (orientation == ORIENTATION_UNKNOWN) return
+                // GOS Camera mapping: phone tilted CW (top points right, orientation~90)
+                // -> Surface.ROTATION_270 == 270°
                 physicalRotation = when {
-                    orientation in 45 until 135 -> 90
-                    orientation in 135 until 225 -> 180
-                    orientation in 225 until 315 -> 270
+                    orientation < 45 -> 0
+                    orientation < 135 -> 270
+                    orientation < 225 -> 180
+                    orientation < 315 -> 90
                     else -> 0
                 }
             }
@@ -277,11 +282,10 @@ class MainActivity : AppCompatActivity() {
                 val stretched = if (h != bmp.height)
                     android.graphics.Bitmap.createScaledBitmap(bmp, w, h, true)
                 else bmp
-                // Rotate the saved bitmap to match how the phone was physically held —
-                // landscape-held phone -> landscape file. Sign is inverted (postRotate uses CW)
-                // because OrientationEventListener returns CW physical rotation.
+                // Rotate the saved bitmap by the device's required upright rotation
+                // (GOS-style Surface.ROTATION_* value, applied as a CW postRotate).
                 val finalBmp = if (rotDeg == 0) stretched else {
-                    val m = android.graphics.Matrix().apply { postRotate(-rotDeg.toFloat()) }
+                    val m = android.graphics.Matrix().apply { postRotate(rotDeg.toFloat()) }
                     android.graphics.Bitmap.createBitmap(
                         stretched, 0, 0, stretched.width, stretched.height, m, true
                     )
