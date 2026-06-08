@@ -26,7 +26,6 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.databinding.ActivityMainBinding
 import kotlinx.coroutines.CoroutineScope
@@ -215,16 +214,10 @@ class MainActivity : AppCompatActivity() {
         startCamera()
     }
 
-    /** Resize the GL preview to match the chosen aspect (portrait orientation). */
+    /** Update only the aspect label — the GL preview stays full-bleed on purpose, source
+     *  frames get stretched into it for the OG CCD look. */
     private fun applyAspectToLayout() {
-        // portrait phone: 16:9 video -> tall narrow preview (W:H = 9:16),
-        //                  4:3 video -> shorter preview (W:H = 3:4)
-        val ratio = if (aspectRatio == AspectRatio.RATIO_4_3) "H,3:4" else "H,9:16"
-        val label = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
-        val lp = binding.glView.layoutParams as ConstraintLayout.LayoutParams
-        lp.dimensionRatio = ratio
-        binding.glView.layoutParams = lp
-        binding.aspectBtn.text = label
+        binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
     }
 
     private fun updateZoomLabel(ratio: Float) {

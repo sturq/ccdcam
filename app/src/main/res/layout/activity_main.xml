@@ -8,14 +8,15 @@
     android:background="@color/hud_bg"
     android:fitsSystemWindows="true">
 
-    <!-- ============== PREVIEW (aspect-locked, fills width) ============== -->
-    <!-- dimensionRatio is updated at runtime to 9:16 (default) or 3:4 by toggleAspect() -->
+    <!-- ============== PREVIEW (full-bleed, source frames get stretched into it) ============== -->
+    <!-- intentional: the CCD/Hi8 aesthetic relies on the source aspect being squished into
+         the portrait viewport. 16:9 stretches less, 4:3 stretches more horizontally. -->
     <android.opengl.GLSurfaceView
         android:id="@+id/glView"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintDimensionRatio="H,9:16"
         app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/modeRow"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
