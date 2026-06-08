@@ -36,9 +36,11 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Build debug APK
-        run: gradle wrapper --gradle-version 8.9 && ./gradlew assembleDebug --no-daemon --stacktrace
+        run: gradle wrapper --gradle-version 8.9 --distribution-type bin && ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Run Paparazzi snapshot tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace

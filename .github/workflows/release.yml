@@ -27,6 +27,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Resolve version from tag
         id: ver
@@ -43,7 +45,7 @@ jobs:
 
       - name: Build release APK (non-debuggable, signed with bundled debug keystore)
         run: |
-          gradle wrapper --gradle-version 8.9
+          gradle wrapper --gradle-version 8.9 --distribution-type bin
           ./gradlew assembleRelease --no-daemon --stacktrace \
             -PversionName=${{ steps.ver.outputs.num }}
 
