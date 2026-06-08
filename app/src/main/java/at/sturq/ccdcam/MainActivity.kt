@@ -282,10 +282,11 @@ class MainActivity : AppCompatActivity() {
                 val stretched = if (h != bmp.height)
                     android.graphics.Bitmap.createScaledBitmap(bmp, w, h, true)
                 else bmp
-                // Rotate the saved bitmap by the device's required upright rotation
-                // (GOS-style Surface.ROTATION_* value, applied as a CW postRotate).
-                val finalBmp = if (rotDeg == 0) stretched else {
-                    val m = android.graphics.Matrix().apply { postRotate(rotDeg.toFloat()) }
+                // GOS rotation needs +90° offset because our shader's texMatrix already
+                // applied a 90° rotation to put portrait content upright in the framebuffer.
+                val applyRot = (rotDeg + 90) % 360
+                val finalBmp = if (applyRot == 0) stretched else {
+                    val m = android.graphics.Matrix().apply { postRotate(applyRot.toFloat()) }
                     android.graphics.Bitmap.createBitmap(
                         stretched, 0, 0, stretched.width, stretched.height, m, true
                     )
@@ -338,10 +339,8 @@ class MainActivity : AppCompatActivity() {
         }
         val outFile = File(cacheDir, "rec_${System.currentTimeMillis()}.mp4")
         val rec = VideoRecorder(this, w, h)
-        // pass the physical orientation directly as the orientation hint so a player
-        // rotates the (portrait-encoded) frames in the same direction the phone was
-        // tilted, putting the captured content upright from the user's viewing angle.
-        val rotHint = physicalRotation
+        // same +90° offset as photo: shader-baked rotation already adds 90° to the frame.
+        val rotHint = (physicalRotation + 90) % 360
         try {
             rec.start(outFile, rotHint)
         } catch (t: Throwable) {
