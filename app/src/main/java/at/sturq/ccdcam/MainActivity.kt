@@ -11,7 +11,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.MediaStore
-import android.util.Size
+import android.content.Context
+import android.content.SharedPreferences
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.Surface
@@ -20,6 +21,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.Camera
+import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
@@ -49,6 +51,8 @@ class MainActivity : AppCompatActivity() {
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var pendingSurfaceTexture: SurfaceTexture? = null
+    private var aspectRatio: Int = AspectRatio.RATIO_16_9
+    private lateinit var prefs: SharedPreferences
 
     private var mode = Mode.VIDEO
     private var videoRecorder: VideoRecorder? = null
@@ -89,6 +93,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        prefs = getSharedPreferences("ccdcam", Context.MODE_PRIVATE)
+        aspectRatio = if (prefs.getString("aspect", "16:9") == "4:3")
+            AspectRatio.RATIO_4_3 else AspectRatio.RATIO_16_9
+        binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
+        binding.aspectBtn.setOnClickListener { toggleAspect() }
 
         binding.glView.setEGLContextClientVersion(2)
         renderer = CcdRenderer(this) { st ->
@@ -169,7 +179,7 @@ class MainActivity : AppCompatActivity() {
             provider.unbindAll()
 
             val preview = Preview.Builder()
-                .setTargetResolution(Size(1280, 720))
+                .setTargetAspectRatio(aspectRatio)
                 .build()
 
             preview.setSurfaceProvider { req: SurfaceRequest ->
@@ -187,6 +197,19 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Camera bind failed: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun toggleAspect() {
+        if (videoRecorder != null) {
+            Toast.makeText(this, "Stop recording first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        aspectRatio = if (aspectRatio == AspectRatio.RATIO_16_9)
+            AspectRatio.RATIO_4_3 else AspectRatio.RATIO_16_9
+        val label = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
+        binding.aspectBtn.text = label
+        prefs.edit().putString("aspect", label).apply()
+        startCamera()
     }
 
     private fun updateZoomLabel(ratio: Float) {

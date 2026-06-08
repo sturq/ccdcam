@@ -70,14 +70,18 @@
             android:layout_weight="1" />
 
         <TextView
-            android:id="@+id/tapeMode"
+            android:id="@+id/aspectBtn"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
             android:fontFamily="monospace"
+            android:textStyle="bold"
             android:textSize="11sp"
-            android:textColor="@color/hud_dim"
-            android:letterSpacing="0.14"
-            android:text="SP  HD"
+            android:textColor="@color/hud_accent"
+            android:letterSpacing="0.1"
+            android:background="?attr/selectableItemBackground"
+            android:text="16:9"
             tools:ignore="HardcodedText" />
 
         <ImageView
