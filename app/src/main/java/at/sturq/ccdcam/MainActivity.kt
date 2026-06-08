@@ -282,10 +282,13 @@ class MainActivity : AppCompatActivity() {
                 val stretched = if (h != bmp.height)
                     android.graphics.Bitmap.createScaledBitmap(bmp, w, h, true)
                 else bmp
-                // GOS-style rotation; only applied for non-portrait orientations so
-                // portrait stays a portrait file.
+                // GOS-style rotation. Reference photo from stock camera vs ours showed
+                // our content rotated 90° CCW — postRotate uses CW positive but we were
+                // applying the GOS Surface.ROTATION_* value with the wrong sign. Invert.
                 val finalBmp = if (rotDeg == 0) stretched else {
-                    val m = android.graphics.Matrix().apply { postRotate(rotDeg.toFloat()) }
+                    val m = android.graphics.Matrix().apply {
+                        postRotate(((360 - rotDeg) % 360).toFloat())
+                    }
                     android.graphics.Bitmap.createBitmap(
                         stretched, 0, 0, stretched.width, stretched.height, m, true
                     )
@@ -361,7 +364,10 @@ class MainActivity : AppCompatActivity() {
         }
         videoRecorder = rec
         recordingFile = outFile
-        renderer.setEncoderSurface(rec.inputSurface, w, h, rec.startNs, rotDeg)
+        // same sign-fix as photo: GL vertex rotation uses CCW-positive convention but the
+        // rendered scene rotates the opposite way the quad does, so we pass (360 - rotDeg).
+        val encoderRot = (360 - rotDeg) % 360
+        renderer.setEncoderSurface(rec.inputSurface, w, h, rec.startNs, encoderRot)
         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video_recording)
         recordStartMs = SystemClock.elapsedRealtime()
         uiHandler.post(tickRunnable)
