@@ -67,12 +67,19 @@ class MainActivity : AppCompatActivity() {
                 if (orientation == ORIENTATION_UNKNOWN) return
                 // GOS Camera mapping: phone tilted CW (top points right, orientation~90)
                 // -> Surface.ROTATION_270 == 270°
+                val prev = physicalRotation
                 physicalRotation = when {
                     orientation < 45 -> 0
                     orientation < 135 -> 270
                     orientation < 225 -> 180
                     orientation < 315 -> 90
                     else -> 0
+                }
+                if (prev != physicalRotation) {
+                    android.util.Log.i(
+                        "CCDCam",
+                        "orientation changed: raw=$orientation° -> physicalRotation=$physicalRotation"
+                    )
                 }
             }
         }
@@ -330,14 +337,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
         binding.modeTxt.text = "REC"
-        // Sample physical orientation now so the encoder dims + rotation are stable for
-        // this whole recording. Mapping follows the standard CameraX OrientationEventListener
-        // convention (orientation angle -> Surface.ROTATION_*) used by stock camera apps
-        // including GrapheneOS Camera. Implementation is our own — we apply the rotation in
-        // the renderer's vertex shader against a MediaCodec input surface instead of going
-        // through CameraX VideoCapture's targetRotation, since that pipeline would bypass
-        // the CCD shader.
         val rotDeg = physicalRotation
+        android.util.Log.i(
+            "CCDCam",
+            "REC start: physicalRotation=$rotDeg encoderRot=${(360 - rotDeg) % 360} aspect=${if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"}"
+        )
         // Portrait encoder dims (width × aspect-driven height). For landscape recordings
         // swap them so the encoded MP4 is actually landscape-shaped — no need to rely on
         // an MP4 orientation hint that some galleries ignore.
