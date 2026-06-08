@@ -14,6 +14,7 @@ import android.provider.MediaStore
 import android.content.Context
 import android.content.SharedPreferences
 import android.view.MotionEvent
+import android.view.OrientationEventListener
 import android.view.ScaleGestureDetector
 import android.view.Surface
 import android.view.View
@@ -53,6 +54,24 @@ class MainActivity : AppCompatActivity() {
     private var pendingSurfaceTexture: SurfaceTexture? = null
     private var aspectRatio: Int = AspectRatio.RATIO_16_9
     private lateinit var prefs: SharedPreferences
+
+    /** Physical phone orientation from the accelerometer (0/90/180/270). Updated live by
+     *  [orientationListener]; sampled at shutter time so a sideways-held phone makes a
+     *  landscape photo. */
+    @Volatile private var physicalRotation: Int = 0
+    private val orientationListener by lazy {
+        object : OrientationEventListener(this) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
+                physicalRotation = when {
+                    orientation in 45 until 135 -> 90
+                    orientation in 135 until 225 -> 180
+                    orientation in 225 until 315 -> 270
+                    else -> 0
+                }
+            }
+        }
+    }
 
     private var mode = Mode.VIDEO
     private var videoRecorder: VideoRecorder? = null
@@ -247,15 +266,26 @@ class MainActivity : AppCompatActivity() {
                 }
                 return@requestFrameSnapshot
             }
+            // sample physical orientation at shutter time so it doesn't shift mid-process
+            val rotDeg = physicalRotation
             ioScope.launch {
                 // Stretch the captured framebuffer into the chosen aspect (portrait orientation):
                 // 16:9 -> width × 16/9 tall, 4:3 -> width × 4/3 tall. Same visual content, but
                 // saved file dimensions differ — toggle becomes visible in the output.
                 val w = bmp.width
                 val h = if (aspectRatio == AspectRatio.RATIO_4_3) w * 4 / 3 else w * 16 / 9
-                val finalBmp = if (h != bmp.height)
+                val stretched = if (h != bmp.height)
                     android.graphics.Bitmap.createScaledBitmap(bmp, w, h, true)
                 else bmp
+                // Rotate the saved bitmap to match how the phone was physically held —
+                // landscape-held phone -> landscape file. Sign is inverted (postRotate uses CW)
+                // because OrientationEventListener returns CW physical rotation.
+                val finalBmp = if (rotDeg == 0) stretched else {
+                    val m = android.graphics.Matrix().apply { postRotate(-rotDeg.toFloat()) }
+                    android.graphics.Bitmap.createBitmap(
+                        stretched, 0, 0, stretched.width, stretched.height, m, true
+                    )
+                }
                 val uri = savePhoto(finalBmp)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
@@ -382,12 +412,14 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         binding.glView.onResume()
         uiHandler.post(dateRunnable)
+        if (orientationListener.canDetectOrientation()) orientationListener.enable()
     }
 
     override fun onPause() {
         if (videoRecorder != null) stopRecording()
         uiHandler.removeCallbacks(tickRunnable)
         uiHandler.removeCallbacks(dateRunnable)
+        orientationListener.disable()
         binding.glView.onPause()
         super.onPause()
     }
