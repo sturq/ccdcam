@@ -334,10 +334,10 @@ class MainActivity : AppCompatActivity() {
         }
         val outFile = File(cacheDir, "rec_${System.currentTimeMillis()}.mp4")
         val rec = VideoRecorder(this, w, h)
-        // map physical phone rotation to MP4 orientation hint: a hint of N tells the
-        // player to rotate N° CW on playback so the (portrait-recorded) frames appear
-        // upright relative to how the phone was held. inverse of the physical angle.
-        val rotHint = (360 - physicalRotation) % 360
+        // pass the physical orientation directly as the orientation hint so a player
+        // rotates the (portrait-encoded) frames in the same direction the phone was
+        // tilted, putting the captured content upright from the user's viewing angle.
+        val rotHint = physicalRotation
         try {
             rec.start(outFile, rotHint)
         } catch (t: Throwable) {
