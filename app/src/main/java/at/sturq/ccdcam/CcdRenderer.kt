@@ -52,8 +52,10 @@ class CcdRenderer(
     private var uTimeLoc = 0
     private var uTextureLoc = 0
     private var uStretchLoc = 0
+    private var uRotationLoc = 0
 
     @Volatile var stretch: Float = 0.72f
+    @Volatile var encoderRotationDeg: Int = 0
 
     private var width = 1
     private var height = 1
@@ -82,7 +84,13 @@ class CcdRenderer(
      * [ptsBaseNs] is the monotonic clock value the encoder considers t=0 — pass the same
      * reference the audio pipeline uses so A/V share a zero-based timeline.
      */
-    fun setEncoderSurface(s: Surface?, w: Int, h: Int, ptsBaseNs: Long = System.nanoTime()) {
+    fun setEncoderSurface(
+        s: Surface?,
+        w: Int,
+        h: Int,
+        ptsBaseNs: Long = System.nanoTime(),
+        rotationDeg: Int = 0,
+    ) {
         if (s == null) {
             teardownEncoderSurface = true
         } else {
@@ -90,6 +98,7 @@ class CcdRenderer(
             pendingEncoderWidth = w
             pendingEncoderHeight = h
             encoderStartNs = ptsBaseNs
+            encoderRotationDeg = rotationDeg
             lastEncoderFrameNs = 0L
         }
     }
@@ -109,6 +118,7 @@ class CcdRenderer(
         uTimeLoc = GLES20.glGetUniformLocation(program, "uTime")
         uTextureLoc = GLES20.glGetUniformLocation(program, "sTexture")
         uStretchLoc = GLES20.glGetUniformLocation(program, "uStretch")
+        uRotationLoc = GLES20.glGetUniformLocation(program, "uRotationRad")
 
         vertexBuf = ByteBuffer.allocateDirect(vertexCoords.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
@@ -173,7 +183,7 @@ class CcdRenderer(
         width = w; height = h
     }
 
-    private fun drawTo(viewportW: Int, viewportH: Int) {
+    private fun drawTo(viewportW: Int, viewportH: Int, rotationDeg: Int = 0) {
         GLES20.glViewport(0, 0, viewportW, viewportH)
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
@@ -188,6 +198,7 @@ class CcdRenderer(
         val t = (System.nanoTime() - startNs) / 1_000_000_000f
         GLES20.glUniform1f(uTimeLoc, t)
         GLES20.glUniform1f(uStretchLoc, stretch)
+        GLES20.glUniform1f(uRotationLoc, Math.toRadians(rotationDeg.toDouble()).toFloat())
 
         vertexBuf.position(0)
         GLES20.glEnableVertexAttribArray(aPosLoc)
@@ -229,7 +240,7 @@ class CcdRenderer(
             val savedDraw = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW)
             val savedRead = EGL14.eglGetCurrentSurface(EGL14.EGL_READ)
             if (EGL14.eglMakeCurrent(eglDisplay, encSurf, encSurf, eglContext)) {
-                drawTo(encoderW, encoderH)
+                drawTo(encoderW, encoderH, encoderRotationDeg)
                 // PTS must be relative to encoderStartNs, otherwise the muxer records
                 // a track that starts at the absolute monotonic clock (~hours since boot)
                 // and the file's reported duration becomes nonsense.

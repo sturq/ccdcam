@@ -327,11 +327,24 @@ class MainActivity : AppCompatActivity() {
             return
         }
         binding.modeTxt.text = "REC"
-        // encoder dimensions follow chosen aspect: 16:9 -> w*16/9 tall, 4:3 -> w*4/3 tall.
+        // Sample physical orientation now so the encoder dims + rotation are stable for
+        // this whole recording. Mapping follows the standard CameraX OrientationEventListener
+        // convention (orientation angle -> Surface.ROTATION_*) used by stock camera apps
+        // including GrapheneOS Camera. Implementation is our own — we apply the rotation in
+        // the renderer's vertex shader against a MediaCodec input surface instead of going
+        // through CameraX VideoCapture's targetRotation, since that pipeline would bypass
+        // the CCD shader.
+        val rotDeg = physicalRotation
+        // Portrait encoder dims (width × aspect-driven height). For landscape recordings
+        // swap them so the encoded MP4 is actually landscape-shaped — no need to rely on
+        // an MP4 orientation hint that some galleries ignore.
         val srcW = binding.glView.width.coerceAtLeast(2)
-        val w = srcW and 1.inv()  // round down to even (H.264 requires even)
-        val rawH = if (aspectRatio == AspectRatio.RATIO_4_3) w * 4 / 3 else w * 16 / 9
-        val h = rawH and 1.inv()
+        val portraitW = srcW and 1.inv()
+        val portraitH = ((if (aspectRatio == AspectRatio.RATIO_4_3) portraitW * 4 / 3 else portraitW * 16 / 9)) and 1.inv()
+        val (w, h) = when (rotDeg) {
+            90, 270 -> Pair(portraitH, portraitW)   // landscape encoder
+            else -> Pair(portraitW, portraitH)      // portrait encoder
+        }
         if (w < 16 || h < 16) {
             Toast.makeText(this, "Preview not ready", Toast.LENGTH_SHORT).show()
             return
@@ -347,7 +360,7 @@ class MainActivity : AppCompatActivity() {
         }
         videoRecorder = rec
         recordingFile = outFile
-        renderer.setEncoderSurface(rec.inputSurface, w, h, rec.startNs)
+        renderer.setEncoderSurface(rec.inputSurface, w, h, rec.startNs, rotDeg)
         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video_recording)
         recordStartMs = SystemClock.elapsedRealtime()
         uiHandler.post(tickRunnable)
