@@ -76,9 +76,16 @@ class MainActivity : AppCompatActivity() {
                     else -> 0
                 }
                 if (prev != physicalRotation) {
+                    // Push the live rotation into the renderer so video frames adapt as
+                    // the phone is tilted mid-recording. Encoder dims stay fixed (MediaCodec
+                    // can't resize mid-stream) but content rotates inside them so it stays
+                    // upright. Same (360 - rotDeg) sign correction as REC-start.
+                    if (::renderer.isInitialized) {
+                        renderer.encoderRotationDeg = (360 - physicalRotation) % 360
+                    }
                     android.util.Log.i(
                         "CCDCam",
-                        "orientation changed: raw=$orientation° -> physicalRotation=$physicalRotation"
+                        "orientation: raw=$orientation° -> phys=$physicalRotation enc=${(360 - physicalRotation) % 360}"
                     )
                 }
             }
