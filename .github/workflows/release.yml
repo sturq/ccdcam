@@ -45,8 +45,7 @@ jobs:
 
       - name: Build release APK (non-debuggable, signed with bundled debug keystore)
         run: |
-          gradle wrapper --gradle-version 8.9 --distribution-type bin
-          ./gradlew assembleRelease --no-daemon --stacktrace \
+          gradle assembleRelease --no-daemon --stacktrace \
             -PversionName=${{ steps.ver.outputs.num }}
 
       - name: Rename APK

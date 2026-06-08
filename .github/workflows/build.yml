@@ -40,10 +40,10 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build debug APK
-        run: gradle wrapper --gradle-version 8.9 --distribution-type bin && ./gradlew assembleDebug --no-daemon --stacktrace
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Run Paparazzi snapshot tests
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
