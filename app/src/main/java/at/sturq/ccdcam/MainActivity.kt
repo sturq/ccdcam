@@ -288,8 +288,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
         binding.modeTxt.text = "REC"
-        val w = binding.glView.width.coerceAtLeast(2).let { if (it % 2 == 0) it else it - 1 }
-        val h = binding.glView.height.coerceAtLeast(2).let { if (it % 2 == 0) it else it - 1 }
+        // encoder dimensions follow chosen aspect: 16:9 -> w*16/9 tall, 4:3 -> w*4/3 tall.
+        val srcW = binding.glView.width.coerceAtLeast(2)
+        val w = srcW and 1.inv()  // round down to even (H.264 requires even)
+        val rawH = if (aspectRatio == AspectRatio.RATIO_4_3) w * 4 / 3 else w * 16 / 9
+        val h = rawH and 1.inv()
         if (w < 16 || h < 16) {
             Toast.makeText(this, "Preview not ready", Toast.LENGTH_SHORT).show()
             return
