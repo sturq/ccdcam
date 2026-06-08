@@ -351,9 +351,10 @@ class MainActivity : AppCompatActivity() {
         }
         val outFile = File(cacheDir, "rec_${System.currentTimeMillis()}.mp4")
         val rec = VideoRecorder(this, w, h)
-        val rotHint = physicalRotation
+        // rotation is baked into encoded pixels by the renderer below; muxer hint at 0
+        // so every gallery (regardless of metadata support) shows the correct orientation.
         try {
-            rec.start(outFile, rotHint)
+            rec.start(outFile, 0)
         } catch (t: Throwable) {
             Toast.makeText(this, "Recorder start failed: ${t.message}", Toast.LENGTH_LONG).show()
             return
