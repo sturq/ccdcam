@@ -243,7 +243,15 @@ class MainActivity : AppCompatActivity() {
                 return@requestFrameSnapshot
             }
             ioScope.launch {
-                val uri = savePhoto(bmp)
+                // Stretch the captured framebuffer into the chosen aspect (portrait orientation):
+                // 16:9 -> width × 16/9 tall, 4:3 -> width × 4/3 tall. Same visual content, but
+                // saved file dimensions differ — toggle becomes visible in the output.
+                val w = bmp.width
+                val h = if (aspectRatio == AspectRatio.RATIO_4_3) w * 4 / 3 else w * 16 / 9
+                val finalBmp = if (h != bmp.height)
+                    android.graphics.Bitmap.createScaledBitmap(bmp, w, h, true)
+                else bmp
+                val uri = savePhoto(finalBmp)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@MainActivity,
