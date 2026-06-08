@@ -26,6 +26,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.databinding.ActivityMainBinding
 import kotlinx.coroutines.CoroutineScope
@@ -97,7 +98,7 @@ class MainActivity : AppCompatActivity() {
         prefs = getSharedPreferences("ccdcam", Context.MODE_PRIVATE)
         aspectRatio = if (prefs.getString("aspect", "16:9") == "4:3")
             AspectRatio.RATIO_4_3 else AspectRatio.RATIO_16_9
-        binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
+        applyAspectToLayout()
         binding.aspectBtn.setOnClickListener { toggleAspect() }
 
         binding.glView.setEGLContextClientVersion(2)
@@ -206,10 +207,24 @@ class MainActivity : AppCompatActivity() {
         }
         aspectRatio = if (aspectRatio == AspectRatio.RATIO_16_9)
             AspectRatio.RATIO_4_3 else AspectRatio.RATIO_16_9
-        val label = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
-        binding.aspectBtn.text = label
-        prefs.edit().putString("aspect", label).apply()
+        prefs.edit().putString(
+            "aspect",
+            if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
+        ).apply()
+        applyAspectToLayout()
         startCamera()
+    }
+
+    /** Resize the GL preview to match the chosen aspect (portrait orientation). */
+    private fun applyAspectToLayout() {
+        // portrait phone: 16:9 video -> tall narrow preview (W:H = 9:16),
+        //                  4:3 video -> shorter preview (W:H = 3:4)
+        val ratio = if (aspectRatio == AspectRatio.RATIO_4_3) "H,3:4" else "H,9:16"
+        val label = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
+        val lp = binding.glView.layoutParams as ConstraintLayout.LayoutParams
+        lp.dimensionRatio = ratio
+        binding.glView.layoutParams = lp
+        binding.aspectBtn.text = label
     }
 
     private fun updateZoomLabel(ratio: Float) {
