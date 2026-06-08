@@ -85,12 +85,10 @@
             android:text="16:9"
             tools:ignore="HardcodedText" />
 
-        <ImageView
-            android:layout_width="22dp"
-            android:layout_height="12dp"
-            android:layout_marginStart="10dp"
-            android:src="@drawable/battery_indicator"
-            android:contentDescription="@null" />
+        <at.sturq.ccdcam.BatteryHudView
+            android:layout_width="26dp"
+            android:layout_height="13dp"
+            android:layout_marginStart="10dp" />
     </LinearLayout>
 
     <!-- viewfinder corner brackets -->
