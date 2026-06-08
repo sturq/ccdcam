@@ -219,9 +219,11 @@ class MainActivity : AppCompatActivity() {
         startCamera()
     }
 
-    /** Update only the aspect label — the GL preview stays full-bleed on purpose, source
-     *  frames get stretched into it for the OG CCD look. */
+    /** Push aspect-specific stretch factor into the shader and update the label. */
     private fun applyAspectToLayout() {
+        // 16:9 source post-rotation is already very tall (9:16), light extra zoom looks right.
+        // 4:3 source post-rotation is shorter (3:4), same zoom over-crops, so softer value.
+        renderer.stretch = if (aspectRatio == AspectRatio.RATIO_4_3) 0.92f else 0.72f
         binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
     }
 
