@@ -97,7 +97,6 @@ class MainActivity : AppCompatActivity() {
         prefs = getSharedPreferences("ccdcam", Context.MODE_PRIVATE)
         aspectRatio = if (prefs.getString("aspect", "16:9") == "4:3")
             AspectRatio.RATIO_4_3 else AspectRatio.RATIO_16_9
-        applyAspectToLayout()
         binding.aspectBtn.setOnClickListener { toggleAspect() }
 
         binding.glView.setEGLContextClientVersion(2)
@@ -107,6 +106,8 @@ class MainActivity : AppCompatActivity() {
         }
         binding.glView.setRenderer(renderer)
         binding.glView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+        // renderer is now ready, safe to push initial stretch into it
+        applyAspectToLayout()
 
         // pinch-to-zoom
         scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
