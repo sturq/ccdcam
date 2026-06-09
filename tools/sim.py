@@ -19,8 +19,8 @@ import numpy as np
 from PIL import Image
 
 # ---------- shader constants (kept in sync with ccd.frag) ----------
-CCD_X = 960.0
-CCD_Y = 960.0
+CCD_X = 720.0
+CCD_Y = 720.0
 LINES = 480.0
 SMEAR_THRESHOLD = 0.86
 SMEAR_STRENGTH = 1.3
@@ -30,12 +30,12 @@ HORIZONTAL_FLARE = 0.30
 FLARE_THRESHOLD = 0.90
 FLARE_RANGE = 0.14
 FLARE_SAMPLES = 5
-CHROMA_NOISE_AMP = 0.05
-LUMA_GRAIN_AMP = 0.085
-BLACK_LIFT = 0.02
-WARM_GRADE = np.array([1.10, 1.02, 0.90], dtype=np.float32)
-DESAT = 1.15
-CONTRAST = 1.12
+CHROMA_NOISE_AMP = 0.02
+LUMA_GRAIN_AMP = 0.05
+BLACK_LIFT = 0.01
+WARM_GRADE = np.array([1.05, 1.01, 0.98], dtype=np.float32)
+DESAT = 0.98
+CONTRAST = 1.15
 SCANLINE_AMP = 0.025
 VIGNETTE_STRENGTH = 0.35
 
