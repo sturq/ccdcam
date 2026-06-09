@@ -20,14 +20,14 @@ const float FLARE_THRESHOLD = 0.90;
 const float FLARE_RANGE = 0.14;
 const int   FLARE_SAMPLES = 5;
 const float FLARE_STRENGTH = 0.40;
-const float CHROMA_NOISE_AMP = 0.045;
+const float CHROMA_NOISE_AMP = 0.020;
 const float LUMA_GRAIN_AMP = 0.035;
 const float BLACK_LIFT = 0.05;
 const vec3  WARM_GRADE = vec3(1.06, 1.02, 0.95);
 const float DESAT = 0.93;
 const float SCANLINE_AMP = 0.02;
-const float VIGNETTE_STRENGTH = 0.45;
-const float CHROMA_SHIFT = 0.0015;
+const float VIGNETTE_STRENGTH = 0.35;
+const float CHROMA_SHIFT = 0.0003;
 
 float hash(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
