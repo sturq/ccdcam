@@ -285,12 +285,11 @@ class MainActivity : AppCompatActivity() {
                 val m = android.graphics.Matrix().apply { postRotate(rot.toFloat()) }
                 Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
             }
-            // 2. Apply Hi8-style horizontal zoom-in on the upright bitmap: crop the middle
-            // 72% of the horizontal axis, then scale back to full width. Anamorphic-style
-            // left-to-right squish that tracks world-orientation regardless of how the
-            // phone was held.
-            val stretched = applyHorizontalStretch(upright, 0.72f)
-            val uri = savePhoto(stretched)
+            // No anamorphic post-process: reference OG sushitrash footage has no visible
+            // stretch (buildings/trees keep normal proportions). The CCD aesthetic comes
+            // from the shader's warm grade, lifted blacks, soft scanlines, and vignette —
+            // all already applied during preview rendering.
+            val uri = savePhoto(upright)
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     this@MainActivity,
@@ -300,15 +299,6 @@ class MainActivity : AppCompatActivity() {
                 binding.shutterBtn.isEnabled = true
             }
         }
-    }
-
-    private fun applyHorizontalStretch(src: Bitmap, factor: Float): Bitmap {
-        val cropW = (src.width * factor).toInt().coerceAtLeast(1)
-        val xOffset = (src.width - cropW) / 2
-        val cropped = Bitmap.createBitmap(src, xOffset, 0, cropW, src.height)
-        val out = Bitmap.createScaledBitmap(cropped, src.width, src.height, true)
-        if (cropped !== out) cropped.recycle()
-        return out
     }
 
     private fun savePhoto(bmp: Bitmap): android.net.Uri? {
