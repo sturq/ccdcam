@@ -285,11 +285,11 @@ class MainActivity : AppCompatActivity() {
                 val m = android.graphics.Matrix().apply { postRotate(rot.toFloat()) }
                 Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
             }
-            // 2. Apply Hi8-style vertical zoom-in on the upright bitmap: crop the middle 72%
-            // of the vertical axis, then scale back to full height. The stretch axis now
-            // tracks world-up regardless of how the phone was held, so the look is identical
-            // across portrait and landscape orientations.
-            val stretched = applyVerticalStretch(upright, 0.72f)
+            // 2. Apply Hi8-style horizontal zoom-in on the upright bitmap: crop the middle
+            // 72% of the horizontal axis, then scale back to full width. Anamorphic-style
+            // left-to-right squish that tracks world-orientation regardless of how the
+            // phone was held.
+            val stretched = applyHorizontalStretch(upright, 0.72f)
             val uri = savePhoto(stretched)
             withContext(Dispatchers.Main) {
                 Toast.makeText(
@@ -302,10 +302,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun applyVerticalStretch(src: Bitmap, factor: Float): Bitmap {
-        val cropH = (src.height * factor).toInt().coerceAtLeast(1)
-        val yOffset = (src.height - cropH) / 2
-        val cropped = Bitmap.createBitmap(src, 0, yOffset, src.width, cropH)
+    private fun applyHorizontalStretch(src: Bitmap, factor: Float): Bitmap {
+        val cropW = (src.width * factor).toInt().coerceAtLeast(1)
+        val xOffset = (src.width - cropW) / 2
+        val cropped = Bitmap.createBitmap(src, xOffset, 0, cropW, src.height)
         val out = Bitmap.createScaledBitmap(cropped, src.width, src.height, true)
         if (cropped !== out) cropped.recycle()
         return out
