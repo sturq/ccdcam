@@ -70,6 +70,9 @@ class MainActivity : AppCompatActivity() {
     private var mode = Mode.VIDEO
 
     @Volatile private var lastSurfaceRotation: Int = Surface.ROTATION_0
+    /** CW degrees to apply to PreviewView.bitmap before saving a photo (the bitmap is
+     *  always in display orientation; we need to bake the physical rotation in). */
+    @Volatile private var photoRotationCw: Int = 0
     private val orientationListener by lazy {
         object : OrientationEventListener(this) {
             override fun onOrientationChanged(orientation: Int) {
@@ -80,6 +83,13 @@ class MainActivity : AppCompatActivity() {
                     orientation < 225 -> Surface.ROTATION_180
                     orientation < 315 -> Surface.ROTATION_90
                     else -> Surface.ROTATION_0
+                }
+                photoRotationCw = when {
+                    orientation < 45 -> 0
+                    orientation < 135 -> 90
+                    orientation < 225 -> 180
+                    orientation < 315 -> 270
+                    else -> 0
                 }
                 if (rot != lastSurfaceRotation) {
                     lastSurfaceRotation = rot
@@ -265,11 +275,16 @@ class MainActivity : AppCompatActivity() {
             return
         }
         binding.shutterBtn.isEnabled = false
-        // PreviewView's bitmap already has the CCD shader applied (it's the same surface our
-        // processor renders to). It's also already physically upright because PreviewView is
-        // owned by CameraX — we just save it as-is.
+        val rot = photoRotationCw
+        // PreviewView.bitmap is always in display orientation (portrait). To make the saved
+        // file match physical-world up regardless of how the phone is held, rotate it by the
+        // current physical orientation (CW degrees) before writing.
         ioScope.launch {
-            val uri = savePhoto(bmp)
+            val finalBmp = if (rot == 0) bmp else {
+                val m = android.graphics.Matrix().apply { postRotate(rot.toFloat()) }
+                Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
+            }
+            val uri = savePhoto(finalBmp)
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     this@MainActivity,
