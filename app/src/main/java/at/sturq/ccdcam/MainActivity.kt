@@ -77,15 +77,13 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (prev != physicalRotation) {
                     // Push the live rotation into the renderer so video frames adapt as
-                    // the phone is tilted mid-recording. Encoder dims stay fixed (MediaCodec
-                    // can't resize mid-stream) but content rotates inside them so it stays
-                    // upright. Same (360 - rotDeg) sign correction as REC-start.
+                    // the phone is tilted mid-recording.
                     if (::renderer.isInitialized) {
-                        renderer.encoderRotationDeg = (360 - physicalRotation) % 360
+                        renderer.encoderRotationDeg = physicalRotation
                     }
                     android.util.Log.i(
                         "CCDCam",
-                        "orientation: raw=$orientation° -> phys=$physicalRotation enc=${(360 - physicalRotation) % 360}"
+                        "orientation: raw=$orientation° -> phys=$physicalRotation enc=$physicalRotation"
                     )
                 }
             }
@@ -296,13 +294,9 @@ class MainActivity : AppCompatActivity() {
                 val stretched = if (h != bmp.height)
                     android.graphics.Bitmap.createScaledBitmap(bmp, w, h, true)
                 else bmp
-                // GOS-style rotation. Reference photo from stock camera vs ours showed
-                // our content rotated 90° CCW — postRotate uses CW positive but we were
-                // applying the GOS Surface.ROTATION_* value with the wrong sign. Invert.
+                // Match video rotation: direct mapping of GOS Surface.ROTATION_* angle.
                 val finalBmp = if (rotDeg == 0) stretched else {
-                    val m = android.graphics.Matrix().apply {
-                        postRotate(((360 - rotDeg) % 360).toFloat())
-                    }
+                    val m = android.graphics.Matrix().apply { postRotate(rotDeg.toFloat()) }
                     android.graphics.Bitmap.createBitmap(
                         stretched, 0, 0, stretched.width, stretched.height, m, true
                     )
@@ -347,7 +341,7 @@ class MainActivity : AppCompatActivity() {
         val rotDeg = physicalRotation
         android.util.Log.i(
             "CCDCam",
-            "REC start: physicalRotation=$rotDeg encoderRot=${(360 - rotDeg) % 360} aspect=${if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"}"
+            "REC start: physicalRotation=$rotDeg encoderRot=$rotDeg aspect=${if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"}"
         )
         // Portrait encoder dims (width × aspect-driven height). For landscape recordings
         // swap them so the encoded MP4 is actually landscape-shaped — no need to rely on
@@ -375,10 +369,9 @@ class MainActivity : AppCompatActivity() {
         }
         videoRecorder = rec
         recordingFile = outFile
-        // same sign-fix as photo: GL vertex rotation uses CCW-positive convention but the
-        // rendered scene rotates the opposite way the quad does, so we pass (360 - rotDeg).
-        val encoderRot = (360 - rotDeg) % 360
-        renderer.setEncoderSurface(rec.inputSurface, w, h, rec.startNs, encoderRot)
+        // Direct mapping: USB-right (physical 90) had been upside down with the inverse
+        // formula, switching to direct flips it back. Same value used live by the listener.
+        renderer.setEncoderSurface(rec.inputSurface, w, h, rec.startNs, rotDeg)
         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video_recording)
         recordStartMs = SystemClock.elapsedRealtime()
         uiHandler.post(tickRunnable)
