@@ -257,11 +257,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyAspectLabel() {
-        // Shader stretch is intentionally off: it was applied along the surface vertical
-        // axis, which means landscape photos came out with the squish in the wrong direction.
-        // The Hi8-style vertical zoom is reapplied as a post-process on the already-rotated
-        // photo bitmap (see capturePhoto), so the squish axis always tracks world-up.
-        ccdProcessor.stretch = 1.0f
+        // Horizontal anamorphic squish in the shader (uStretch on X axis) — applies to both
+        // preview and video output uniformly, so videos get the CCD/Hi8 character that comes
+        // from a tighter horizontal sample range scaled to fill output width.
+        ccdProcessor.stretch = 0.85f
         binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
     }
 
