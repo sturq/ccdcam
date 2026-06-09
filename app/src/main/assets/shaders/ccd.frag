@@ -9,8 +9,8 @@ uniform float uTime;
 // constants kept in sync with tools/sim.py
 // Subtler Sony-Handycam aesthetic — visible CCD character but the underlying scene is
 // still readable. Hi8/MiniDV had a softer look than full-on retro filters.
-const float CCD_X = 1280.0;
-const float CCD_Y = 1280.0;
+const float CCD_X = 960.0;
+const float CCD_Y = 960.0;
 const float LINES = 480.0;
 const float SMEAR_THRESHOLD = 0.86;
 const float SMEAR_STRENGTH = 1.3;
@@ -20,12 +20,13 @@ const float FLARE_THRESHOLD = 0.90;
 const float FLARE_RANGE = 0.14;
 const int   FLARE_SAMPLES = 5;
 const float FLARE_STRENGTH = 0.30;
-const float CHROMA_NOISE_AMP = 0.035;
-const float LUMA_GRAIN_AMP = 0.055;
-const float BLACK_LIFT = 0.05;
-const vec3  WARM_GRADE = vec3(1.06, 1.02, 0.95);
-const float DESAT = 0.93;
-const float SCANLINE_AMP = 0.018;
+const float CHROMA_NOISE_AMP = 0.05;
+const float LUMA_GRAIN_AMP = 0.085;
+const float BLACK_LIFT = 0.02;
+const vec3  WARM_GRADE = vec3(1.10, 1.02, 0.90);
+const float SATURATION = 1.15;     // >1 boosts away from gray
+const float CONTRAST = 1.12;       // around mid-gray
+const float SCANLINE_AMP = 0.025;
 const float VIGNETTE_STRENGTH = 0.35;
 const float CHROMA_SHIFT = 0.0003;
 
@@ -88,8 +89,9 @@ void main() {
 
     col = col * (1.0 - BLACK_LIFT) + BLACK_LIFT;
     col *= WARM_GRADE;
+    col = (col - 0.5) * CONTRAST + 0.5;
     float l = luma(col);
-    col = mix(vec3(l), col, DESAT);
+    col = mix(vec3(l), col, SATURATION);
 
     float scan = (1.0 - SCANLINE_AMP) + SCANLINE_AMP * sin(uv.y * LINES * 3.14159);
     col *= scan;

@@ -19,8 +19,8 @@ import numpy as np
 from PIL import Image
 
 # ---------- shader constants (kept in sync with ccd.frag) ----------
-CCD_X = 1280.0
-CCD_Y = 1280.0
+CCD_X = 960.0
+CCD_Y = 960.0
 LINES = 480.0
 SMEAR_THRESHOLD = 0.86
 SMEAR_STRENGTH = 1.3
@@ -30,12 +30,13 @@ HORIZONTAL_FLARE = 0.30
 FLARE_THRESHOLD = 0.90
 FLARE_RANGE = 0.14
 FLARE_SAMPLES = 5
-CHROMA_NOISE_AMP = 0.035
-LUMA_GRAIN_AMP = 0.055
-BLACK_LIFT = 0.05
-WARM_GRADE = np.array([1.06, 1.02, 0.95], dtype=np.float32)
-DESAT = 0.93
-SCANLINE_AMP = 0.018
+CHROMA_NOISE_AMP = 0.05
+LUMA_GRAIN_AMP = 0.085
+BLACK_LIFT = 0.02
+WARM_GRADE = np.array([1.10, 1.02, 0.90], dtype=np.float32)
+DESAT = 1.15
+CONTRAST = 1.12
+SCANLINE_AMP = 0.025
 VIGNETTE_STRENGTH = 0.35
 
 LUMA_W = np.array([0.299, 0.587, 0.114], dtype=np.float32)
@@ -123,6 +124,7 @@ def luma_grain(img: np.ndarray, rng: np.random.Generator) -> np.ndarray:
 def color_grade(img: np.ndarray) -> np.ndarray:
     out = img * (1.0 - BLACK_LIFT) + BLACK_LIFT
     out = out * WARM_GRADE
+    out = (out - 0.5) * CONTRAST + 0.5
     L = luma(out)
     out = L[..., None] * (1.0 - DESAT) + out * DESAT
     return out

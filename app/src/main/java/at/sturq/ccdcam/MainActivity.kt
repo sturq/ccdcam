@@ -260,7 +260,7 @@ class MainActivity : AppCompatActivity() {
         // Horizontal anamorphic squish in the shader (uStretch on X axis) — applies to both
         // preview and video output uniformly, so videos get the CCD/Hi8 character that comes
         // from a tighter horizontal sample range scaled to fill output width.
-        ccdProcessor.stretch = 0.85f
+        ccdProcessor.stretch = 0.78f
         binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
     }
 
