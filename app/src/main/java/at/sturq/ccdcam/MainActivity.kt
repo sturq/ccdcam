@@ -257,8 +257,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyAspectLabel() {
-        // Keep the visible Hi8 squish tighter for 4:3 (taller output) than 16:9.
-        ccdProcessor.stretch = if (aspectRatio == AspectRatio.RATIO_4_3) 0.72f * 3f / 4f else 0.72f
+        // Shader stretch is intentionally off: it was applied along the surface vertical
+        // axis, which means landscape photos came out with the squish in the wrong direction.
+        // The Hi8-style vertical zoom is reapplied as a post-process on the already-rotated
+        // photo bitmap (see capturePhoto), so the squish axis always tracks world-up.
+        ccdProcessor.stretch = 1.0f
         binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
     }
 
@@ -276,15 +279,18 @@ class MainActivity : AppCompatActivity() {
         }
         binding.shutterBtn.isEnabled = false
         val rot = photoRotationCw
-        // PreviewView.bitmap is always in display orientation (portrait). To make the saved
-        // file match physical-world up regardless of how the phone is held, rotate it by the
-        // current physical orientation (CW degrees) before writing.
         ioScope.launch {
-            val finalBmp = if (rot == 0) bmp else {
+            // 1. Rotate to physical orientation so floor ends up at the bottom of the file.
+            val upright = if (rot == 0) bmp else {
                 val m = android.graphics.Matrix().apply { postRotate(rot.toFloat()) }
                 Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
             }
-            val uri = savePhoto(finalBmp)
+            // 2. Apply Hi8-style vertical zoom-in on the upright bitmap: crop the middle 72%
+            // of the vertical axis, then scale back to full height. The stretch axis now
+            // tracks world-up regardless of how the phone was held, so the look is identical
+            // across portrait and landscape orientations.
+            val stretched = applyVerticalStretch(upright, 0.72f)
+            val uri = savePhoto(stretched)
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     this@MainActivity,
@@ -294,6 +300,15 @@ class MainActivity : AppCompatActivity() {
                 binding.shutterBtn.isEnabled = true
             }
         }
+    }
+
+    private fun applyVerticalStretch(src: Bitmap, factor: Float): Bitmap {
+        val cropH = (src.height * factor).toInt().coerceAtLeast(1)
+        val yOffset = (src.height - cropH) / 2
+        val cropped = Bitmap.createBitmap(src, 0, yOffset, src.width, cropH)
+        val out = Bitmap.createScaledBitmap(cropped, src.width, src.height, true)
+        if (cropped !== out) cropped.recycle()
+        return out
     }
 
     private fun savePhoto(bmp: Bitmap): android.net.Uri? {
