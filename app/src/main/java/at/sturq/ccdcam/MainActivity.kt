@@ -1,18 +1,17 @@
 package at.sturq.ccdcam
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ContentValues
+import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.SurfaceTexture
-import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.MediaStore
-import android.content.Context
-import android.content.SharedPreferences
 import android.view.MotionEvent
 import android.view.OrientationEventListener
 import android.view.ScaleGestureDetector
@@ -21,75 +20,78 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.Camera
 import androidx.camera.core.AspectRatio
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
-import androidx.camera.core.SurfaceRequest
+import androidx.camera.core.UseCaseGroup
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.MediaStoreOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.databinding.ActivityMainBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
-import java.util.concurrent.Executors
 
+/**
+ * CCDCam: standard CameraX pipeline (PreviewView + VideoCapture<Recorder>) with the CCD
+ * shader injected via [CcdEffect] (a SurfaceProcessor-based CameraEffect). All rotation
+ * and orientation handling is delegated to CameraX — we never rotate bitmaps or compute
+ * encoder dimensions manually. Photo is grabbed from PreviewView.bitmap, which is already
+ * filtered and matches what the user sees.
+ */
 class MainActivity : AppCompatActivity() {
 
     private enum class Mode { PHOTO, VIDEO }
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var renderer: CcdRenderer
-    private val executor = Executors.newSingleThreadExecutor()
-    private val ioScope = CoroutineScope(Dispatchers.IO)
-    private val uiHandler = Handler(Looper.getMainLooper())
-
-    private var lensFacing = CameraSelector.LENS_FACING_BACK
-    private var cameraProvider: ProcessCameraProvider? = null
-    private var camera: Camera? = null
-    private var pendingSurfaceTexture: SurfaceTexture? = null
-    private var aspectRatio: Int = AspectRatio.RATIO_16_9
     private lateinit var prefs: SharedPreferences
 
-    /**
-     * Physical phone orientation. Mapping follows GrapheneOS Camera: the angle stored is
-     * the rotation needed to put the captured image upright relative to how the phone is
-     * held (Surface.ROTATION_* convention, but as raw degrees).
-     */
-    @Volatile private var physicalRotation: Int = 0
+    private lateinit var ccdProcessor: CcdSurfaceProcessor
+    private lateinit var ccdEffect: CcdEffect
+
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
+    private var preview: Preview? = null
+    private var videoCapture: VideoCapture<Recorder>? = null
+    private var recording: Recording? = null
+
+    private var lensFacing = CameraSelector.LENS_FACING_BACK
+    private var aspectRatio: Int = AspectRatio.RATIO_16_9
+    private var mode = Mode.VIDEO
+
+    @Volatile private var lastSurfaceRotation: Int = Surface.ROTATION_0
     private val orientationListener by lazy {
         object : OrientationEventListener(this) {
             override fun onOrientationChanged(orientation: Int) {
                 if (orientation == ORIENTATION_UNKNOWN) return
-                // GOS Camera mapping: phone tilted CW (top points right, orientation~90)
-                // -> Surface.ROTATION_270 == 270°
-                val prev = physicalRotation
-                physicalRotation = when {
-                    orientation < 45 -> 0
-                    orientation < 135 -> 270
-                    orientation < 225 -> 180
-                    orientation < 315 -> 90
-                    else -> 0
+                val rot = when {
+                    orientation < 45 -> Surface.ROTATION_0
+                    orientation < 135 -> Surface.ROTATION_270
+                    orientation < 225 -> Surface.ROTATION_180
+                    orientation < 315 -> Surface.ROTATION_90
+                    else -> Surface.ROTATION_0
                 }
-                if (prev != physicalRotation) {
-                    val enc = applyRotFor(physicalRotation)
-                    if (::renderer.isInitialized) renderer.encoderRotationDeg = enc
-                    android.util.Log.i(
-                        "CCDCam",
-                        "orientation: raw=$orientation° -> phys=$physicalRotation enc=$enc"
-                    )
+                if (rot != lastSurfaceRotation) {
+                    lastSurfaceRotation = rot
+                    videoCapture?.targetRotation = rot
                 }
             }
         }
     }
 
-    private var mode = Mode.VIDEO
-    private var videoRecorder: VideoRecorder? = null
-    private var recordingFile: File? = null
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val ioScope = CoroutineScope(Dispatchers.IO)
+
     private var recordStartMs = 0L
     private var blinkOn = false
 
@@ -97,7 +99,7 @@ class MainActivity : AppCompatActivity() {
 
     private val tickRunnable = object : Runnable {
         override fun run() {
-            if (videoRecorder != null) {
+            if (recording != null) {
                 val elapsed = SystemClock.elapsedRealtime() - recordStartMs
                 binding.timecode.text = formatTimecode(elapsed)
                 blinkOn = !blinkOn
@@ -118,10 +120,11 @@ class MainActivity : AppCompatActivity() {
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
-        if (result.values.all { it }) startCamera()
+        if (result.values.all { it }) bindCamera()
         else Toast.makeText(this, R.string.perm_denied, Toast.LENGTH_LONG).show()
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -130,19 +133,30 @@ class MainActivity : AppCompatActivity() {
         prefs = getSharedPreferences("ccdcam", Context.MODE_PRIVATE)
         aspectRatio = if (prefs.getString("aspect", "16:9") == "4:3")
             AspectRatio.RATIO_4_3 else AspectRatio.RATIO_16_9
+
+        ccdProcessor = CcdSurfaceProcessor(this)
+        ccdEffect = CcdEffect(ccdProcessor)
+        applyAspectLabel()
+
         binding.aspectBtn.setOnClickListener { toggleAspect() }
-
-        binding.glView.setEGLContextClientVersion(2)
-        renderer = CcdRenderer(this) { st ->
-            pendingSurfaceTexture = st
-            runOnUiThread { startCamera() }
+        binding.flipBtn.setOnClickListener {
+            if (recording != null) {
+                Toast.makeText(this, "Stop recording before flipping", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK)
+                CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
+            bindCamera()
         }
-        binding.glView.setRenderer(renderer)
-        binding.glView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
-        // renderer is now ready, safe to push initial stretch into it
-        applyAspectToLayout()
+        binding.shutterBtn.setOnClickListener {
+            when (mode) {
+                Mode.PHOTO -> capturePhoto()
+                Mode.VIDEO -> toggleRecording()
+            }
+        }
+        binding.modePhoto.setOnClickListener { setMode(Mode.PHOTO) }
+        binding.modeVideo.setOnClickListener { setMode(Mode.VIDEO) }
 
-        // pinch-to-zoom
         scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val cam = camera ?: return false
@@ -154,39 +168,17 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
         })
-        binding.glView.setOnTouchListener { _, ev: MotionEvent ->
+        binding.previewView.setOnTouchListener { _, ev: MotionEvent ->
             scaleDetector.onTouchEvent(ev)
             true
         }
 
-        binding.flipBtn.setOnClickListener {
-            if (videoRecorder != null) {
-                Toast.makeText(this, "Stop recording before flipping", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK)
-                CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
-            startCamera()
-        }
-
-        binding.shutterBtn.setOnClickListener {
-            when (mode) {
-                Mode.PHOTO -> capturePhoto()
-                Mode.VIDEO -> toggleRecording()
-            }
-        }
-
-        binding.modePhoto.setOnClickListener { setMode(Mode.PHOTO) }
-        binding.modeVideo.setOnClickListener { setMode(Mode.VIDEO) }
-
         setMode(Mode.VIDEO)
-        if (!hasPerms()) permLauncher.launch(REQUIRED_PERMS)
+        if (!hasPerms()) permLauncher.launch(REQUIRED_PERMS) else bindCamera()
     }
 
     private fun setMode(m: Mode) {
-        if (videoRecorder != null && m != Mode.VIDEO) {
-            stopRecording()
-        }
+        if (recording != null && m != Mode.VIDEO) stopRecording()
         mode = m
         val active = ContextCompat.getColor(this, R.color.hud_accent)
         val dim = ContextCompat.getColor(this, R.color.hud_dim)
@@ -199,38 +191,39 @@ class MainActivity : AppCompatActivity() {
         binding.timecode.text = if (m == Mode.PHOTO) "          " else "00:00:00:00"
     }
 
-    private fun hasPerms(): Boolean = REQUIRED_PERMS.all {
+    private fun hasPerms() = REQUIRED_PERMS.all {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun startCamera() {
+    private fun bindCamera() {
         if (!hasPerms()) return
-        val st = pendingSurfaceTexture ?: return
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
             val provider = providerFuture.get()
             cameraProvider = provider
             provider.unbindAll()
 
-            val preview = Preview.Builder()
+            preview = Preview.Builder()
                 .setTargetAspectRatio(aspectRatio)
                 .build()
+                .also { it.setSurfaceProvider(binding.previewView.surfaceProvider) }
 
-            preview.setSurfaceProvider { req: SurfaceRequest ->
-                val res = req.resolution
-                android.util.Log.i(
-                    "CCDCam",
-                    "Preview source resolution: ${res.width}x${res.height} " +
-                        "(aspect ${"%.3f".format(res.width.toFloat() / res.height)})"
-                )
-                st.setDefaultBufferSize(res.width, res.height)
-                val surface = Surface(st)
-                req.provideSurface(surface, executor) { surface.release() }
+            val recorder = Recorder.Builder()
+                .setQualitySelector(QualitySelector.from(Quality.HD))
+                .build()
+            videoCapture = VideoCapture.withOutput(recorder).also {
+                it.targetRotation = lastSurfaceRotation
             }
+
+            val group = UseCaseGroup.Builder()
+                .addUseCase(preview!!)
+                .addUseCase(videoCapture!!)
+                .addEffect(ccdEffect)
+                .build()
 
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
             try {
-                camera = provider.bindToLifecycle(this, selector, preview)
+                camera = provider.bindToLifecycle(this, selector, group)
                 updateZoomLabel(camera?.cameraInfo?.zoomState?.value?.zoomRatio ?: 1f)
             } catch (e: Exception) {
                 Toast.makeText(this, "Camera bind failed: ${e.message}", Toast.LENGTH_LONG).show()
@@ -239,7 +232,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleAspect() {
-        if (videoRecorder != null) {
+        if (recording != null) {
             Toast.makeText(this, "Stop recording first", Toast.LENGTH_SHORT).show()
             return
         }
@@ -249,77 +242,41 @@ class MainActivity : AppCompatActivity() {
             "aspect",
             if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
         ).apply()
-        applyAspectToLayout()
-        startCamera()
+        applyAspectLabel()
+        bindCamera()
     }
 
-    /**
-     * Map the GOS-style physicalRotation value to the actual CW-positive rotation we
-     * apply to the bitmap / vertex shader. Empirically: both landscapes need the same
-     * 90° CW (not mirror-opposite as one would expect), because the SurfaceTexture
-     * texMatrix's portrait-correction puts framebuffer-top at a fixed direction relative
-     * to the camera sensor regardless of which side the phone is tilted onto.
-     */
-    private fun applyRotFor(rotDeg: Int): Int = when (rotDeg) {
-        90, 270 -> 90
-        180 -> 180
-        else -> 0
-    }
-
-    /** Push aspect-specific stretch factor into the shader and update the label. */
-    private fun applyAspectToLayout() {
-        // 16:9 output is taller (1792 px) than 4:3 (1344 px) for the same width, so the same
-        // shader STRETCH value spreads the sampled source over more output pixels in 16:9 and
-        // visually feels more stretched. compensate by scaling 4:3's stretch by the output
-        // height ratio so both photos end up with equivalent per-pixel vertical zoom.
-        renderer.stretch = if (aspectRatio == AspectRatio.RATIO_4_3) 0.72f * 3f / 4f else 0.72f
+    private fun applyAspectLabel() {
+        // Keep the visible Hi8 squish tighter for 4:3 (taller output) than 16:9.
+        ccdProcessor.stretch = if (aspectRatio == AspectRatio.RATIO_4_3) 0.72f * 3f / 4f else 0.72f
         binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
     }
 
     private fun updateZoomLabel(ratio: Float) {
         binding.zoomTxt.text = String.format(Locale.US, "%.1f×", ratio)
-        // dim zoom when at 1x, accent when zoomed in
         val color = if (ratio > 1.05f) R.color.hud_accent else R.color.hud_dim
         binding.zoomTxt.setTextColor(ContextCompat.getColor(this, color))
     }
 
     private fun capturePhoto() {
+        val bmp = binding.previewView.bitmap
+        if (bmp == null) {
+            Toast.makeText(this, "Preview not ready", Toast.LENGTH_SHORT).show()
+            return
+        }
         binding.shutterBtn.isEnabled = false
-        renderer.requestFrameSnapshot { bmp ->
-            if (bmp == null) {
-                runOnUiThread {
-                    Toast.makeText(this, "Capture failed", Toast.LENGTH_SHORT).show()
-                    binding.shutterBtn.isEnabled = true
-                }
-                return@requestFrameSnapshot
-            }
-            // sample physical orientation at shutter time so it doesn't shift mid-process
-            val rotDeg = physicalRotation
-            ioScope.launch {
-                // Stretch the captured framebuffer into the chosen aspect (portrait orientation):
-                // 16:9 -> width × 16/9 tall, 4:3 -> width × 4/3 tall. Same visual content, but
-                // saved file dimensions differ — toggle becomes visible in the output.
-                val w = bmp.width
-                val h = if (aspectRatio == AspectRatio.RATIO_4_3) w * 4 / 3 else w * 16 / 9
-                val stretched = if (h != bmp.height)
-                    android.graphics.Bitmap.createScaledBitmap(bmp, w, h, true)
-                else bmp
-                val finalRot = applyRotFor(rotDeg)
-                val finalBmp = if (finalRot == 0) stretched else {
-                    val m = android.graphics.Matrix().apply { postRotate(finalRot.toFloat()) }
-                    android.graphics.Bitmap.createBitmap(
-                        stretched, 0, 0, stretched.width, stretched.height, m, true
-                    )
-                }
-                val uri = savePhoto(finalBmp)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        if (uri != null) "Saved to Pictures/CCDCam" else "Save failed",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    binding.shutterBtn.isEnabled = true
-                }
+        // PreviewView's bitmap already has the CCD shader applied (it's the same surface our
+        // processor renders to). It's also already physically upright because PreviewView is
+        // owned by CameraX — we just save it as-is.
+        ioScope.launch {
+            val uri = savePhoto(bmp)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@MainActivity,
+                    if (uri != null) "Saved to Pictures/CCDCam" else "Save failed",
+                    Toast.LENGTH_SHORT,
+                ).show()
+                binding.shutterBtn.isEnabled = true
             }
         }
     }
@@ -342,84 +299,16 @@ class MainActivity : AppCompatActivity() {
         return uri
     }
 
+    @SuppressLint("MissingPermission")
     private fun toggleRecording() {
-        if (videoRecorder != null) {
+        recording?.let {
             stopRecording()
             return
         }
-        binding.modeTxt.text = "REC"
-        val rotDeg = physicalRotation
-        val encRotStart = applyRotFor(rotDeg)
-        android.util.Log.i(
-            "CCDCam",
-            "REC start: physicalRotation=$rotDeg encoderRot=$encRotStart aspect=${if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"}"
-        )
-        // Portrait encoder dims (width × aspect-driven height). For landscape recordings
-        // swap them so the encoded MP4 is actually landscape-shaped — no need to rely on
-        // an MP4 orientation hint that some galleries ignore.
-        val srcW = binding.glView.width.coerceAtLeast(2)
-        val portraitW = srcW and 1.inv()
-        val portraitH = ((if (aspectRatio == AspectRatio.RATIO_4_3) portraitW * 4 / 3 else portraitW * 16 / 9)) and 1.inv()
-        val (w, h) = when (rotDeg) {
-            90, 270 -> Pair(portraitH, portraitW)   // landscape encoder
-            else -> Pair(portraitW, portraitH)      // portrait encoder
-        }
-        if (w < 16 || h < 16) {
-            Toast.makeText(this, "Preview not ready", Toast.LENGTH_SHORT).show()
+        val vc = videoCapture ?: run {
+            Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show()
             return
         }
-        val outFile = File(cacheDir, "rec_${System.currentTimeMillis()}.mp4")
-        val rec = VideoRecorder(this, w, h)
-        // rotation is baked into encoded pixels by the renderer below; muxer hint at 0
-        // so every gallery (regardless of metadata support) shows the correct orientation.
-        try {
-            rec.start(outFile, 0)
-        } catch (t: Throwable) {
-            Toast.makeText(this, "Recorder start failed: ${t.message}", Toast.LENGTH_LONG).show()
-            return
-        }
-        videoRecorder = rec
-        recordingFile = outFile
-        renderer.setEncoderSurface(rec.inputSurface, w, h, rec.startNs, encRotStart)
-        binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video_recording)
-        recordStartMs = SystemClock.elapsedRealtime()
-        uiHandler.post(tickRunnable)
-    }
-
-    private fun stopRecording() {
-        val rec = videoRecorder ?: return
-        val file = recordingFile
-        videoRecorder = null
-        recordingFile = null
-        renderer.setEncoderSurface(null, 0, 0)
-        binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video)
-        binding.recDot.visibility = View.INVISIBLE
-        binding.modeTxt.text = "STBY"
-        binding.timecode.text = "00:00:00:00"
-        uiHandler.removeCallbacks(tickRunnable)
-
-        ioScope.launch {
-            try {
-                rec.stop()
-                val savedUri = if (file != null && file.exists() && file.length() > 0)
-                    importVideoToGallery(file) else null
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        if (savedUri != null) "Saved to Movies/CCDCam" else "Save failed",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-                file?.delete()
-            } catch (t: Throwable) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Save error: ${t.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    private fun importVideoToGallery(file: File): android.net.Uri? {
         val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             .format(System.currentTimeMillis())
         val cv = ContentValues().apply {
@@ -429,17 +318,46 @@ class MainActivity : AppCompatActivity() {
                 put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/CCDCam")
             }
         }
-        val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, cv)
-            ?: return null
-        contentResolver.openOutputStream(uri)?.use { os ->
-            file.inputStream().use { it.copyTo(os) }
-        } ?: return null
-        return uri
+        val opts = MediaStoreOutputOptions.Builder(
+            contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        ).setContentValues(cv).build()
+
+        vc.targetRotation = lastSurfaceRotation
+        binding.modeTxt.text = "REC"
+        recording = vc.output
+            .prepareRecording(this, opts)
+            .withAudioEnabled()
+            .start(ContextCompat.getMainExecutor(this)) { event ->
+                when (event) {
+                    is VideoRecordEvent.Start -> {
+                        binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video_recording)
+                        recordStartMs = SystemClock.elapsedRealtime()
+                        uiHandler.post(tickRunnable)
+                    }
+                    is VideoRecordEvent.Finalize -> {
+                        binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video)
+                        binding.recDot.visibility = View.INVISIBLE
+                        binding.modeTxt.text = "STBY"
+                        binding.timecode.text = "00:00:00:00"
+                        uiHandler.removeCallbacks(tickRunnable)
+                        val msg = if (event.hasError())
+                            "Save error: ${event.error}"
+                        else
+                            "Saved to Movies/CCDCam"
+                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+    }
+
+    private fun stopRecording() {
+        recording?.stop()
+        recording = null
     }
 
     private fun formatTimecode(ms: Long): String {
         val totalSec = ms / 1000
-        val frames = ((ms % 1000) * 30 / 1000).toInt()  // simulated 30fps frame counter
+        val frames = ((ms % 1000) * 30 / 1000).toInt()
         return String.format(
             Locale.US, "%02d:%02d:%02d:%02d",
             totalSec / 3600, (totalSec % 3600) / 60, totalSec % 60, frames
@@ -448,18 +366,21 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        binding.glView.onResume()
         uiHandler.post(dateRunnable)
         if (orientationListener.canDetectOrientation()) orientationListener.enable()
     }
 
     override fun onPause() {
-        if (videoRecorder != null) stopRecording()
+        if (recording != null) stopRecording()
         uiHandler.removeCallbacks(tickRunnable)
         uiHandler.removeCallbacks(dateRunnable)
         orientationListener.disable()
-        binding.glView.onPause()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        ccdProcessor.release()
     }
 
     companion object {
