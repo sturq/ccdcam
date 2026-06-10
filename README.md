@@ -2,6 +2,18 @@
 
 Open-source camcorder filter app for Android. The live camera feed runs through a GLSL fragment shader that fakes the look of a 90s Sony Handycam / Hi8 / MiniDV: chunky low-res chroma, vertical highlight smear, horizontal flare, scanlines, warm grade, vignette. Photos and video are saved with the filter baked into the pixels.
 
+## Examples
+
+Forest, shot on a Pixel through CCDCam:
+
+<p>
+  <img src="docs/examples/forest_1.jpg" width="32%" alt="forest 1" />
+  <img src="docs/examples/forest_2.jpg" width="32%" alt="forest 2" />
+  <img src="docs/examples/forest_3.jpg" width="32%" alt="forest 3" />
+</p>
+
+Video clip: [`docs/examples/forest.mp4`](docs/examples/forest.mp4)
+
 ## Features
 
 - **Live filtered preview** at full display refresh rate (60-120 fps)
