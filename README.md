@@ -15,6 +15,12 @@ Forest, shot on a Pixel through CCDCam:
   <img src="docs/examples/sample_4.jpg" width="49%" alt="sample 4" />
   <img src="docs/examples/sample_5.jpg" width="49%" alt="sample 5" />
 </p>
+<p>
+  <img src="docs/examples/sample_6.jpg" width="24%" alt="sample 6" />
+  <img src="docs/examples/sample_7.jpg" width="24%" alt="sample 7" />
+  <img src="docs/examples/sample_8.jpg" width="24%" alt="sample 8" />
+  <img src="docs/examples/sample_9.jpg" width="24%" alt="sample 9" />
+</p>
 
 <p>
   <a href="docs/examples/forest.mp4" title="Click to play (opens GitHub video viewer)">
