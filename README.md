@@ -12,7 +12,11 @@ Forest, shot on a Pixel through CCDCam:
   <img src="docs/examples/forest_3.jpg" width="32%" alt="forest 3" />
 </p>
 
-Video clip: [`docs/examples/forest.mp4`](docs/examples/forest.mp4)
+<p>
+  <a href="docs/examples/forest.mp4" title="Click to play (opens GitHub video viewer)">
+    <img src="docs/examples/forest_poster.jpg" width="100%" alt="forest video — click to play" />
+  </a>
+</p>
 
 ## Features
 
