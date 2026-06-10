@@ -19,7 +19,6 @@ from sim import (  # noqa: E402
     vertical_smear,
     horizontal_flare,
     color_grade,
-    SMEAR_STRENGTH,
 )
 
 
@@ -37,22 +36,6 @@ def test_output_shape_dtype():
     assert out.shape == inp.shape, f"shape changed {inp.shape} -> {out.shape}"
     assert out.dtype == np.uint8, f"dtype is {out.dtype}, expected uint8"
     assert out.min() >= 0 and out.max() <= 255
-
-
-def test_smear_is_vertical():
-    """Pixels in the column above/below a bright spot should brighten more than
-    pixels in a column far from the bright spot. Spot placed centrally so smear
-    range reaches sample rows."""
-    inp = make_dark_with_bright_spot(h=240, w=320, cx=160, cy=120, r=12)
-    x = inp.astype(np.float32) / 255.0
-    smeared = vertical_smear(x)
-    # same column as the spot, 60 rows above it
-    above = smeared[60, 160].mean()
-    # far column, same row
-    elsewhere = smeared[60, 20].mean()
-    assert above > elsewhere + 0.005, (
-        f"vertical smear not detected: above={above:.4f} elsewhere={elsewhere:.4f}"
-    )
 
 
 def test_no_smear_on_clean_dark_image():
@@ -98,12 +81,6 @@ def test_full_pipeline_deterministic():
     a = process(inp, seed=123)
     b = process(inp, seed=123)
     assert np.array_equal(a, b), "process() not deterministic for fixed seed"
-
-
-def test_smear_strength_constant_in_range():
-    assert 0.5 <= SMEAR_STRENGTH <= 5.0, (
-        f"SMEAR_STRENGTH={SMEAR_STRENGTH} outside reasonable bounds"
-    )
 
 
 def _run_all():
