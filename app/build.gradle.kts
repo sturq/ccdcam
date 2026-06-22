@@ -26,12 +26,16 @@ android {
             }
     }
 
-    signingConfigs {
-        create("releaseDebugKey") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+    // Release signing comes from CI secrets via env vars, never a committed key.
+    val ksFile: String? = System.getenv("KEYSTORE_FILE")
+    if (ksFile != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(ksFile)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
         }
     }
 
@@ -39,7 +43,9 @@ android {
         release {
             isMinifyEnabled = false
             isDebuggable = false
-            signingConfig = signingConfigs.getByName("releaseDebugKey")
+            if (ksFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
