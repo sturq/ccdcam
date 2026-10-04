@@ -13,7 +13,7 @@ from PIL import Image
 
 # ---------- shader constants (kept in sync with nv ccd.frag) ----------
 BARREL = 0.08
-SOFT = 0.0025
+SOFT = 0.0016
 GAIN = 1.30
 GAMMA = 0.75
 HALO_THRESHOLD = 0.80
@@ -65,11 +65,11 @@ def process(img: np.ndarray, seed: int = 0) -> np.ndarray:
     k = (1 + BARREL * (sx * sx + sy * sy)) / (1 + BARREL * rc2)
     u, v = 0.5 + (u - 0.5) * k, 0.5 + (v - 0.5) * k
 
-    sp = SOFT * short
-    l = 0.5 * sample(L, u, v) + 0.125 * (
-        sample(L, u + ex * sp, v) + sample(L, u - ex * sp, v)
-        + sample(L, u, v + ey * sp) + sample(L, u, v - ey * sp)
-    )
+    a, b = ex * SOFT * short, ey * SOFT * short
+    l = (4 * sample(L, u, v)
+         + 2 * (sample(L, u + a, v) + sample(L, u - a, v) + sample(L, u, v + b) + sample(L, u, v - b))
+         + sample(L, u + a, v + b) + sample(L, u + a, v - b)
+         + sample(L, u - a, v + b) + sample(L, u - a, v - b)) / 16
 
     hr = HALO_RADIUS * short
     halo = np.zeros_like(l)

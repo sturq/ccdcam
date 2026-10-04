@@ -30,9 +30,9 @@ def test_blacks_lifted_not_crushed():
 
 def test_halo_around_light():
     img = dark_with_spot()
-    out = process(img, seed=0).astype(int)[..., 1]
-    ring = out[120, 160 + 10]   # just outside the r=6 spot
-    far = out[120, 160 + 60]
+    out = process(img, seed=0).astype(float)[..., 1]
+    ring = out[116:125, 168:171].mean()  # just outside the r=6 spot, averaged over the grain
+    far = out[116:125, 215:225].mean()
     assert ring > far + 10, f"no halo: ring {ring} vs far {far}"
 
 

@@ -13,7 +13,7 @@ uniform float uTime;
 // small halos around lights, fine scintillation grain, gentle barrel bulge and vignette.
 // Deliberately no hard round tube edge, scanlines or reticle.
 const float BARREL = 0.08;           // lens bulge, 0 = flat
-const float SOFT = 0.0025;           // detail blur radius, fraction of the short side
+const float SOFT = 0.0016;           // blur tap spacing, fraction of the short side
 const float GAIN = 1.30;             // light amplification before the curve
 const float GAMMA = 0.75;            // <1 lifts shadows
 const float HALO_THRESHOLD = 0.80;
@@ -50,9 +50,12 @@ void main() {
     float k = (1.0 + BARREL * dot(s, s)) / (1.0 + BARREL * rc2);
     vec2 uv = 0.5 + (vTexCoord - 0.5) * k;
 
-    float sp = SOFT * shortSide;
-    float l = 0.5 * tap(uv)
-            + 0.125 * (tap(uv + ex * sp) + tap(uv - ex * sp) + tap(uv + ey * sp) + tap(uv - ey * sp));
+    // 3x3 gaussian (1 2 1 / 2 4 2 / 1 2 1), taps under 2 px apart so edges blur instead of doubling
+    vec2 a = ex * SOFT * shortSide;
+    vec2 b = ey * SOFT * shortSide;
+    float l = (4.0 * tap(uv)
+            + 2.0 * (tap(uv + a) + tap(uv - a) + tap(uv + b) + tap(uv - b))
+            + tap(uv + a + b) + tap(uv + a - b) + tap(uv - a + b) + tap(uv - a - b)) / 16.0;
 
     float hr = HALO_RADIUS * shortSide;
     float halo = 0.0;
