@@ -13,19 +13,19 @@ uniform float uTime;
 // small halos around lights, fine scintillation grain, gentle barrel bulge and vignette.
 // Deliberately no hard round tube edge, scanlines or reticle.
 const float BARREL = 0.08;           // lens bulge, 0 = flat
-const float SOFT = 0.0012;           // detail blur radius, fraction of the short side
-const float GAIN = 1.25;             // light amplification before the curve
-const float GAMMA = 0.85;            // <1 lifts shadows
+const float SOFT = 0.0025;           // detail blur radius, fraction of the short side
+const float GAIN = 1.30;             // light amplification before the curve
+const float GAMMA = 0.75;            // <1 lifts shadows
 const float HALO_THRESHOLD = 0.80;
 const float HALO_RADIUS = 0.018;     // fraction of the short side
 const float HALO_STRENGTH = 0.35;
-const float GRAIN_AMP = 0.07;
+const float GRAIN_AMP = 0.10;
 const float SPARKLE_RATE = 0.0015;   // share of 2x2 px cells that flash per frame
 const float SPARKLE_AMP = 0.30;
 const float VIGNETTE_STRENGTH = 0.55;
-const vec3  PHOSPHOR_LOW  = vec3(0.01, 0.05, 0.01);
-const vec3  PHOSPHOR_MID  = vec3(0.30, 0.72, 0.14);
-const vec3  PHOSPHOR_HIGH = vec3(0.86, 1.00, 0.62);
+const vec3  PHOSPHOR_LOW  = vec3(0.02, 0.07, 0.02);
+const vec3  PHOSPHOR_MID  = vec3(0.34, 0.74, 0.16);
+const vec3  PHOSPHOR_HIGH = vec3(0.85, 1.00, 0.60);
 
 float hash(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -67,7 +67,7 @@ void main() {
     l = pow(clamp(l * GAIN, 0.0, 1.0), GAMMA);
 
     vec2 px = uv * uResolution;
-    l += (hash(px + uTime) - 0.5) * GRAIN_AMP * (1.0 - 0.5 * l);
+    l += (hash(floor(px * 0.5) + uTime) - 0.5) * GRAIN_AMP * (1.0 - 0.5 * l);
     l += step(1.0 - SPARKLE_RATE, hash(floor(px * 0.5) + uTime * 1.3)) * SPARKLE_AMP;
     l = clamp(l, 0.0, 1.0);
 

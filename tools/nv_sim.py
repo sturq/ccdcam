@@ -13,19 +13,19 @@ from PIL import Image
 
 # ---------- shader constants (kept in sync with nv ccd.frag) ----------
 BARREL = 0.08
-SOFT = 0.0012
-GAIN = 1.25
-GAMMA = 0.85
+SOFT = 0.0025
+GAIN = 1.30
+GAMMA = 0.75
 HALO_THRESHOLD = 0.80
 HALO_RADIUS = 0.018
 HALO_STRENGTH = 0.35
-GRAIN_AMP = 0.07
+GRAIN_AMP = 0.10
 SPARKLE_RATE = 0.0015
 SPARKLE_AMP = 0.30
 VIGNETTE_STRENGTH = 0.55
-PHOSPHOR_LOW = np.array([0.01, 0.05, 0.01], dtype=np.float32)
-PHOSPHOR_MID = np.array([0.30, 0.72, 0.14], dtype=np.float32)
-PHOSPHOR_HIGH = np.array([0.86, 1.00, 0.62], dtype=np.float32)
+PHOSPHOR_LOW = np.array([0.02, 0.07, 0.02], dtype=np.float32)
+PHOSPHOR_MID = np.array([0.34, 0.74, 0.16], dtype=np.float32)
+PHOSPHOR_HIGH = np.array([0.85, 1.00, 0.60], dtype=np.float32)
 
 LUMA_W = np.array([0.299, 0.587, 0.114], dtype=np.float32)
 
@@ -83,9 +83,11 @@ def process(img: np.ndarray, seed: int = 0) -> np.ndarray:
     l = np.clip(l * GAIN, 0.0, 1.0) ** GAMMA
 
     # ponytail: rng instead of the shader hash, same distribution, not the same pixels
-    l = l + (rng.random((h, w), dtype=np.float32) - 0.5) * GRAIN_AMP * (1.0 - 0.5 * l)
-    cells = rng.random(((h + 1) // 2, (w + 1) // 2), dtype=np.float32) >= 1.0 - SPARKLE_RATE
-    l = l + np.repeat(np.repeat(cells, 2, 0), 2, 1)[:h, :w] * SPARKLE_AMP
+    def cells2(x):  # one value per 2x2 px cell, like floor(px * 0.5) in the shader
+        return np.repeat(np.repeat(x, 2, 0), 2, 1)[:h, :w]
+    ch, cw = (h + 1) // 2, (w + 1) // 2
+    l = l + (cells2(rng.random((ch, cw), dtype=np.float32)) - 0.5) * GRAIN_AMP * (1.0 - 0.5 * l)
+    l = l + cells2(rng.random((ch, cw), dtype=np.float32) >= 1.0 - SPARKLE_RATE) * SPARKLE_AMP
     l = np.clip(l, 0.0, 1.0)[..., None]
 
     lo = np.clip(l * 2, 0, 1)
