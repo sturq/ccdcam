@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">NVCam</string>
+    <string name="hud_label">NV CAM</string>
 </resources>

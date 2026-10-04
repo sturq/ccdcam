@@ -181,7 +181,7 @@
             android:textSize="10sp"
             android:textColor="@color/hud_dim"
             android:letterSpacing="0.1"
-            android:text="CCD CAM"
+            android:text="@string/hud_label"
             tools:ignore="HardcodedText" />
 
         <Space
