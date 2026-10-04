@@ -17,7 +17,9 @@ jobs:
       - name: Install deps
         run: pip install numpy pillow
       - name: Run shader sim tests
-        run: python tools/test_sim.py
+        run: |
+          python tools/test_sim.py
+          python tools/test_nv_sim.py
 
   apk:
     runs-on: ubuntu-latest
@@ -43,13 +45,13 @@ jobs:
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Run Paparazzi snapshot tests
-        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+        run: gradle :app:testCcdDebugUnitTest :app:testNvDebugUnitTest --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ccdcam-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/*/debug/*.apk
           if-no-files-found: error
           retention-days: 7
 

@@ -48,12 +48,10 @@ jobs:
           gradle assembleRelease --no-daemon --stacktrace \
             -PversionName=${{ steps.ver.outputs.num }}
 
-      - name: Rename APK
+      - name: Rename APKs
         run: |
-          SRC=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
-          DST="ccdcam-${{ steps.ver.outputs.tag }}.apk"
-          cp "$SRC" "$DST"
-          echo "APK=$DST" >> "$GITHUB_ENV"
+          cp "$(find app/build/outputs/apk/ccd/release -name '*.apk' | head -1)" "ccdcam-${{ steps.ver.outputs.tag }}.apk"
+          cp "$(find app/build/outputs/apk/nv/release -name '*.apk' | head -1)" "nvcam-${{ steps.ver.outputs.tag }}.apk"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -62,5 +60,7 @@ jobs:
           name: ${{ steps.ver.outputs.tag }}
           prerelease: ${{ steps.ver.outputs.prerelease }}
           generate_release_notes: true
-          files: ${{ env.APK }}
+          files: |
+            ccdcam-${{ steps.ver.outputs.tag }}.apk
+            nvcam-${{ steps.ver.outputs.tag }}.apk
           fail_on_unmatched_files: true

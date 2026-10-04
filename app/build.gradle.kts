@@ -35,6 +35,20 @@ android {
         }
     }
 
+    // Two apps from one codebase: the nv flavor overrides shaders/ccd.frag, name and colors.
+    flavorDimensions += "look"
+    productFlavors {
+        create("ccd") {
+            dimension = "look"
+            buildConfigField("float", "STRETCH", "0.78f")  // anamorphic CCD squish
+        }
+        create("nv") {
+            dimension = "look"
+            applicationId = "at.sturq.nvcam"
+            buildConfigField("float", "STRETCH", "1.0f")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -54,6 +68,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 

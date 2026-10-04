@@ -70,6 +70,9 @@ class MainActivity : AppCompatActivity() {
     private var mode = Mode.VIDEO
 
     @Volatile private var lastSurfaceRotation: Int = Surface.ROTATION_0
+    /** CCDCam or NVCam, per flavor; also names the save folders and files. */
+    private val appName by lazy { getString(R.string.app_name) }
+
     /** CW degrees to apply to PreviewView.bitmap before saving a photo (the bitmap is
      *  always in display orientation; we need to bake the physical rotation in). */
     @Volatile private var photoRotationCw: Int = 0
@@ -260,7 +263,7 @@ class MainActivity : AppCompatActivity() {
         // Horizontal anamorphic squish in the shader (uStretch on X axis) — applies to both
         // preview and video output uniformly, so videos get the CCD/Hi8 character that comes
         // from a tighter horizontal sample range scaled to fill output width.
-        ccdProcessor.stretch = 0.78f
+        ccdProcessor.stretch = BuildConfig.STRETCH
         binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
     }
 
@@ -292,7 +295,7 @@ class MainActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     this@MainActivity,
-                    if (uri != null) "Saved to Pictures/CCDCam" else "Save failed",
+                    if (uri != null) "Saved to Pictures/$appName" else "Save failed",
                     Toast.LENGTH_SHORT,
                 ).show()
                 binding.shutterBtn.isEnabled = true
@@ -301,13 +304,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun savePhoto(bmp: Bitmap): android.net.Uri? {
-        val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+        val name = appName.lowercase() + "_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             .format(System.currentTimeMillis())
         val cv = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.jpg")
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CCDCam")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/$appName")
             }
         }
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
@@ -328,13 +331,13 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show()
             return
         }
-        val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+        val name = appName.lowercase() + "_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             .format(System.currentTimeMillis())
         val cv = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.mp4")
             put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/CCDCam")
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/$appName")
             }
         }
         val opts = MediaStoreOutputOptions.Builder(
@@ -362,7 +365,7 @@ class MainActivity : AppCompatActivity() {
                         val msg = if (event.hasError())
                             "Save error: ${event.error}"
                         else
-                            "Saved to Movies/CCDCam"
+                            "Saved to Movies/$appName"
                         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                     }
                 }
