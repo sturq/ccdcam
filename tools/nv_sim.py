@@ -23,6 +23,7 @@ GRAIN_AMP = 0.10
 SPARKLE_RATE = 0.0015
 SPARKLE_AMP = 0.30
 VIGNETTE_STRENGTH = 0.55
+SATURATION = 0.40
 PHOSPHOR_LOW = np.array([0.02, 0.07, 0.02], dtype=np.float32)
 PHOSPHOR_MID = np.array([0.34, 0.74, 0.16], dtype=np.float32)
 PHOSPHOR_HIGH = np.array([0.85, 1.00, 0.60], dtype=np.float32)
@@ -93,6 +94,7 @@ def process(img: np.ndarray, seed: int = 0) -> np.ndarray:
     lo = np.clip(l * 2, 0, 1)
     hi = np.clip(l * 2 - 1, 0, 1)
     col = (PHOSPHOR_LOW * (1 - lo) + PHOSPHOR_MID * lo) * (1 - hi) + PHOSPHOR_HIGH * hi
+    col = (col @ LUMA_W)[..., None] * (1 - SATURATION) + col * SATURATION
 
     qx, qy = xx / w - 0.5, yy / h - 0.5
     col = col * (1.0 - (qx * qx + qy * qy) * VIGNETTE_STRENGTH)[..., None]

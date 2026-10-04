@@ -23,6 +23,7 @@ const float GRAIN_AMP = 0.10;
 const float SPARKLE_RATE = 0.0015;   // share of 2x2 px cells that flash per frame
 const float SPARKLE_AMP = 0.30;
 const float VIGNETTE_STRENGTH = 0.55;
+const float SATURATION = 0.40;       // 1 = full P43 green, 0 = gray
 const vec3  PHOSPHOR_LOW  = vec3(0.02, 0.07, 0.02);
 const vec3  PHOSPHOR_MID  = vec3(0.34, 0.74, 0.16);
 const vec3  PHOSPHOR_HIGH = vec3(0.85, 1.00, 0.60);
@@ -76,6 +77,7 @@ void main() {
 
     vec3 col = mix(mix(PHOSPHOR_LOW, PHOSPHOR_MID, clamp(l * 2.0, 0.0, 1.0)),
                    PHOSPHOR_HIGH, clamp(l * 2.0 - 1.0, 0.0, 1.0));
+    col = mix(vec3(luma(col)), col, SATURATION);
 
     vec2 q = vTexCoord - 0.5;
     col *= 1.0 - dot(q, q) * VIGNETTE_STRENGTH;
